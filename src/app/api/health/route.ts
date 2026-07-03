@@ -9,6 +9,11 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const optional = {
+    supabase: Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+    ),
+    anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
     openai: Boolean(process.env.OPENAI_API_KEY),
     lms: Boolean(process.env.LMS_API_URL),

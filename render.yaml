@@ -1,0 +1,41 @@
+# Render Blueprint for the Gepromed AI Console demo.
+#
+# Deploy flow:
+#   1. Push this repo to the `gepromed-os` branch.
+#   2. In Render: New + > Blueprint, connect the GitHub repo.
+#   3. Render reads this file and provisions the web service.
+#   4. Set DEMO passwords (and optionally NEXTAUTH_SECRET) below or in the dashboard.
+#   5. Deploy and open the service URL.
+#
+# No database, no external APIs, and no persistent disk are required.
+services:
+  - type: web
+    name: gepromed-ai-console
+    runtime: node
+    plan: free
+    branch: gepromed-os
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # A signing secret is generated automatically by Render.
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      # Login accounts. Change these before demoing to Gepromed.
+      - key: DEFAULT_ADMIN_EMAIL
+        value: admin@aimakers.ai
+      - key: DEFAULT_ADMIN_PASSWORD
+        value: aimakers-demo
+      - key: DEMO_GEPROMED_EMAIL
+        value: demo@gepromed.com
+      - key: DEMO_GEPROMED_PASSWORD
+        value: gepromed-demo
+      - key: DEMO_MANAGER_EMAIL
+        value: manager@gepromed.com
+      - key: DEMO_MANAGER_PASSWORD
+        value: gepromed-manager
+      # Optional integrations are intentionally left unset — the app
+      # runs in fully-mocked DEMO MODE without them.

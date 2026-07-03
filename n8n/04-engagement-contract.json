@@ -1,0 +1,155 @@
+{
+  "name": "Gepromed · Engagement contract email (on deposit paid)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gepromed-lead-deposit",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "c1111111-1111-4111-8111-111111111111",
+      "name": "Supabase · lead updated",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "gepromed-lead-deposit"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "c-now",
+              "leftValue": "={{ $json.body.record.stage }}",
+              "rightValue": "deposit_paid",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "c-was",
+              "leftValue": "={{ $json.body.old_record.stage }}",
+              "rightValue": "deposit_paid",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c2222222-2222-4222-8222-222222222222",
+      "name": "Just deposit paid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [220, 0],
+      "notes": "Fires only on the lead to deposit_paid transition."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://aablleekwyjqdxsscyeo.supabase.co/rest/v1/contract_templates",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=eq.{{ $json.body.record.contract_template_id }}" },
+            { "name": "select", "value": "name,file_url" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3333333-3333-4333-8333-333333333333",
+      "name": "Fetch attached contract",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_SUPABASE_CRED", "name": "Supabase apikey" }
+      },
+      "notes": "Uses the template the DB auto-attached on deposit paid. If no default template is uploaded, this returns nothing."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://aablleekwyjqdxsscyeo.supabase.co/rest/v1/rpc/log_email_once",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_lead\": \"{{ $('Supabase · lead updated').item.json.body.record.id }}\",\n  \"p_template\": \"engagement\",\n  \"p_to\": \"{{ $('Supabase · lead updated').item.json.body.record.email }}\",\n  \"p_daily\": false\n}",
+        "options": {}
+      },
+      "id": "c4444444-4444-4444-8444-444444444444",
+      "name": "Idempotency gate (log_email_once)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_SUPABASE_CRED", "name": "Supabase apikey" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-send",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c5555555-5555-4555-8555-555555555555",
+      "name": "First send only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Supabase · lead updated').item.json.body.record.email }}",
+        "subject": "=Gepromed, votre contrat d'engagement à signer : {{ $('Supabase · lead updated').item.json.body.record.training_title_snapshot }}",
+        "emailType": "html",
+        "message": "=<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f6f7f9;padding:24px 0;font-family:Arial,Helvetica,sans-serif;\"><tr><td align=\"center\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border:1px solid #eceef2;border-radius:12px;overflow:hidden;\"><tr><td style=\"background:#1a4fb8;padding:20px 28px;\"><span style=\"color:#ffffff;font-size:20px;font-weight:bold;\">Gepromed</span><span style=\"color:#bcdcff;font-size:12px;\">&nbsp;&nbsp;Formation chirurgicale</span></td></tr><tr><td style=\"padding:28px;color:#1f2430;font-size:15px;line-height:1.6;\"><p style=\"margin:0 0 12px;\">Bonjour {{ $('Supabase · lead updated').item.json.body.record.first_name }},</p><p style=\"margin:0 0 16px;\">Nous avons bien reçu votre acompte pour <b>{{ $('Supabase · lead updated').item.json.body.record.training_title_snapshot }}</b> (référence {{ $('Supabase · lead updated').item.json.body.record.ref }}). Il reste une dernière étape : signer le contrat d'engagement.</p><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:8px 0 18px;\"><tr><td style=\"background:#1a4fb8;border-radius:8px;\"><a href=\"https://aablleekwyjqdxsscyeo.supabase.co/storage/v1/object/public/contracts/{{ $('Fetch attached contract').item.json.file_url }}\" style=\"display:inline-block;padding:12px 22px;color:#ffffff;font-weight:bold;text-decoration:none;font-size:14px;\">Télécharger le contrat</a></td><td style=\"width:10px;\"></td><td style=\"background:#047857;border-radius:8px;\"><a href=\"http://localhost:3001/sign?ref={{ $('Supabase · lead updated').item.json.body.record.ref }}\" style=\"display:inline-block;padding:12px 22px;color:#ffffff;font-weight:bold;text-decoration:none;font-size:14px;\">Téléverser le contrat signé</a></td></tr></table><p style=\"margin:0 0 8px;font-weight:bold;\">Comment procéder</p><ol style=\"margin:0 0 16px;padding-left:20px;color:#42495c;\"><li>Téléchargez le contrat avec le bouton ci-dessus.</li><li>Signez le document.</li><li>Téléversez le contrat signé avec le bouton vert ci-dessus (ou répondez à cet email).</li></ol><p style=\"margin:0;color:#66728a;font-size:13px;\">Dès réception et vérification de votre contrat signé, votre place est confirmée et vos accès à la plateforme vous sont envoyés.</p><hr style=\"border:none;border-top:1px solid #eceef2;margin:22px 0;\"><p style=\"margin:0;color:#66728a;font-size:13px;\"><b style=\"color:#42495c;\">English:</b> We received your deposit for {{ $('Supabase · lead updated').item.json.body.record.training_title_snapshot }}. Please download the engagement contract with the button above, sign it, and reply to this email with the signed copy. Once received, your seat is confirmed and your platform access is emailed to you.</p></td></tr><tr><td style=\"background:#f6f7f9;border-top:1px solid #eceef2;padding:18px 28px;color:#66728a;font-size:12px;line-height:1.6;\"><b style=\"color:#42495c;\">Gepromed</b>, Institut de formation chirurgicale<br>2 rue Marie Hamm, 67000 Strasbourg, France<br>Téléphone : +33 3 88 00 00 00 &nbsp;&middot;&nbsp; Email : formation@gepromed.com</td></tr></table></td></tr></table>",
+        "options": {}
+      },
+      "id": "c6666666-6666-4666-8666-666666666666",
+      "name": "Send engagement contract email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1100, -100],
+      "credentials": {
+        "gmailOAuth2": { "id": "REPLACE_WITH_GMAIL_CRED", "name": "Gmail account" }
+      }
+    }
+  ],
+  "connections": {
+    "Supabase · lead updated": {
+      "main": [[{ "node": "Just deposit paid?", "type": "main", "index": 0 }]]
+    },
+    "Just deposit paid?": {
+      "main": [[{ "node": "Fetch attached contract", "type": "main", "index": 0 }], []]
+    },
+    "Fetch attached contract": {
+      "main": [[{ "node": "Idempotency gate (log_email_once)", "type": "main", "index": 0 }]]
+    },
+    "Idempotency gate (log_email_once)": {
+      "main": [[{ "node": "First send only?", "type": "main", "index": 0 }]]
+    },
+    "First send only?": {
+      "main": [[{ "node": "Send engagement contract email", "type": "main", "index": 0 }], []]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

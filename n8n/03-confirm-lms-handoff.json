@@ -1,0 +1,127 @@
+{
+  "name": "Gepromed · Confirm + LMS handoff",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gepromed-lead-updated",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b1111111-1111-4111-8111-111111111111",
+      "name": "Supabase · lead updated",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "gepromed-lead-updated"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "c-now",
+              "leftValue": "={{ $json.body.record.stage }}",
+              "rightValue": "confirmed",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "c-was",
+              "leftValue": "={{ $json.body.old_record.stage }}",
+              "rightValue": "confirmed",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2222222-2222-4222-8222-222222222222",
+      "name": "Just confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [220, 0],
+      "notes": "Fires only on the lead to confirmed transition (Supabase sends every UPDATE)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://aablleekwyjqdxsscyeo.supabase.co/rest/v1/rpc/log_email_once",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_lead\": \"{{ $json.body.record.id }}\",\n  \"p_template\": \"confirmation\",\n  \"p_to\": \"{{ $json.body.record.email }}\",\n  \"p_daily\": false\n}",
+        "options": {}
+      },
+      "id": "b3333333-3333-4333-8333-333333333333",
+      "name": "Idempotency gate (log_email_once)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_SUPABASE_CRED", "name": "Supabase apikey" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-send",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b4444444-4444-4444-8444-444444444444",
+      "name": "First send only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Supabase · lead updated').item.json.body.record.email }}",
+        "subject": "=Gepromed, place confirmée et accès à la plateforme : {{ $('Supabase · lead updated').item.json.body.record.training_title_snapshot }}",
+        "emailType": "html",
+        "message": "=<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f6f7f9;padding:24px 0;font-family:Arial,Helvetica,sans-serif;\"><tr><td align=\"center\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border:1px solid #eceef2;border-radius:12px;overflow:hidden;\"><tr><td style=\"background:#047857;padding:20px 28px;\"><span style=\"color:#ffffff;font-size:20px;font-weight:bold;\">Gepromed</span><span style=\"color:#bbf7d0;font-size:12px;\">&nbsp;&nbsp;Place confirmée</span></td></tr><tr><td style=\"padding:28px;color:#1f2430;font-size:15px;line-height:1.6;\"><p style=\"margin:0 0 12px;\">Félicitations {{ $('Supabase · lead updated').item.json.body.record.first_name }},</p><p style=\"margin:0 0 16px;\">Votre inscription à <b>{{ $('Supabase · lead updated').item.json.body.record.training_title_snapshot }}</b> est confirmée (référence {{ $('Supabase · lead updated').item.json.body.record.ref }}).</p><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;margin:8px 0 18px;\"><tr><td style=\"padding:16px 18px;\"><div style=\"font-size:13px;color:#047857;font-weight:bold;margin-bottom:6px;\">Vos accès à la plateforme de formation (Gepromed LMS)</div><div style=\"font-size:14px;color:#0f172a;\">Identifiant : <b>{{ $('Supabase · lead updated').item.json.body.record.lms_user_id }}</b></div><div style=\"font-size:14px;color:#0f172a;\">Mot de passe temporaire : <b>gepromed-{{ $('Supabase · lead updated').item.json.body.record.ref }}</b></div><div style=\"font-size:12px;color:#66728a;margin-top:6px;\">À modifier lors de votre première connexion.</div></td></tr></table><p style=\"margin:0;color:#66728a;font-size:13px;\">Vous recevrez un mot de bienvenue un à deux jours avant le début de la formation.</p><hr style=\"border:none;border-top:1px solid #eceef2;margin:22px 0;\"><p style=\"margin:0;color:#66728a;font-size:13px;\"><b style=\"color:#42495c;\">English:</b> Your seat for {{ $('Supabase · lead updated').item.json.body.record.training_title_snapshot }} is confirmed. Your Gepromed LMS login is above. Please change the temporary password on your first sign-in.</p></td></tr><tr><td style=\"background:#f6f7f9;border-top:1px solid #eceef2;padding:18px 28px;color:#66728a;font-size:12px;line-height:1.6;\"><b style=\"color:#42495c;\">Gepromed</b>, Institut de formation chirurgicale<br>2 rue Marie Hamm, 67000 Strasbourg, France<br>Téléphone : +33 3 88 00 00 00 &nbsp;&middot;&nbsp; Email : formation@gepromed.com</td></tr></table></td></tr></table>",
+        "options": {}
+      },
+      "id": "b5555555-5555-4555-8555-555555555555",
+      "name": "Send confirmation + LMS credentials",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [880, -100],
+      "credentials": {
+        "gmailOAuth2": { "id": "REPLACE_WITH_GMAIL_CRED", "name": "Gmail account" }
+      }
+    }
+  ],
+  "connections": {
+    "Supabase · lead updated": {
+      "main": [[{ "node": "Just confirmed?", "type": "main", "index": 0 }]]
+    },
+    "Just confirmed?": {
+      "main": [[{ "node": "Idempotency gate (log_email_once)", "type": "main", "index": 0 }], []]
+    },
+    "Idempotency gate (log_email_once)": {
+      "main": [[{ "node": "First send only?", "type": "main", "index": 0 }]]
+    },
+    "First send only?": {
+      "main": [[{ "node": "Send confirmation + LMS credentials", "type": "main", "index": 0 }], []]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

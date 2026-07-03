@@ -1,0 +1,3 @@
+# Gepromed AI Console — private demo. Not for public indexing.
+User-agent: *
+Disallow: /

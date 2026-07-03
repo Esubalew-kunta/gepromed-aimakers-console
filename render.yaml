@@ -13,7 +13,7 @@ services:
     name: gepromed-ai-console
     runtime: node
     plan: free
-    branch: gepromed-os
+    branch: main
     buildCommand: npm install && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health

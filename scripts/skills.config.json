@@ -1,0 +1,1020 @@
+{
+  "_note": "Hand-authored metadata + input forms for the 16 real Gepromed skills. The importer (build-skills-sql.mjs) reads this + each skill folder to generate db/skills_real.sql. system_prompt and description are derived automatically; everything here is metadata + the run form. For select inputs the FIRST option is the default.",
+  "skillsDir": "../../skills",
+  "skills": [
+    {
+      "key": "gepromed-email-reformulation",
+      "name": "Email Reformulation & Tone",
+      "category": "Communication",
+      "icon": "mail",
+      "tags": [
+        "Email",
+        "FR/EN",
+        "Tone",
+        "Draft"
+      ],
+      "owner": "Communication",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 12,
+      "inputs": [
+        {
+          "name": "text",
+          "label": "Raw email or intent",
+          "type": "textarea",
+          "placeholder": "Paste the message to rewrite, or describe what you want to say...",
+          "sample": "slt, on voudrait savoir si vous etes dispo pour une demo du simulateur la semaine prochaine, dites moi. merci"
+        },
+        {
+          "name": "recipient",
+          "label": "Recipient",
+          "type": "select",
+          "options": [
+            "Infer",
+            "Surgeon",
+            "Device manufacturer",
+            "Researcher",
+            "Institution / funder",
+            "Training participant",
+            "Supplier",
+            "Member / donor"
+          ],
+          "sample": "Device manufacturer"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "select",
+          "options": [
+            "Neutral-professional",
+            "Warm",
+            "Firm",
+            "Formal"
+          ],
+          "sample": "Warm"
+        },
+        {
+          "name": "length",
+          "label": "Length",
+          "type": "select",
+          "options": [
+            "Keep",
+            "Shorten",
+            "Expand"
+          ],
+          "sample": "Keep"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "Mirror input"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-linkedin-post-drafter",
+      "name": "LinkedIn Post Drafter",
+      "category": "Communication",
+      "icon": "chat",
+      "tags": [
+        "LinkedIn",
+        "Social",
+        "FR/EN",
+        "Human-sounding"
+      ],
+      "owner": "Communication",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 20,
+      "inputs": [
+        {
+          "name": "topic",
+          "label": "Topic or source",
+          "type": "textarea",
+          "placeholder": "Subject, event, paper, or image brief the post is about...",
+          "sample": "Recap of the 17th Vascular Bootcamp: 3 days of hands-on endovascular training with our supervisor network."
+        },
+        {
+          "name": "format",
+          "label": "Format",
+          "type": "select",
+          "options": [
+            "Text post",
+            "Carousel",
+            "Image post",
+            "Event announcement",
+            "Event recap",
+            "Publication post"
+          ],
+          "sample": "Event recap"
+        },
+        {
+          "name": "audience",
+          "label": "Audience",
+          "type": "select",
+          "options": [
+            "Mixed / general HCP",
+            "Surgeons",
+            "Manufacturers",
+            "Researchers",
+            "Institutions",
+            "Participants",
+            "Partners"
+          ],
+          "sample": "Surgeons"
+        },
+        {
+          "name": "goal",
+          "label": "Goal",
+          "type": "select",
+          "options": [
+            "Awareness",
+            "Registration",
+            "Recruitment",
+            "Credibility",
+            "Thanks"
+          ],
+          "sample": "Awareness"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "Mirror input"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-editorial-calendar-builder",
+      "name": "Editorial Calendar Builder",
+      "category": "Communication",
+      "icon": "clock",
+      "tags": [
+        "Content plan",
+        "Calendar",
+        "FR/EN"
+      ],
+      "owner": "Communication",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 45,
+      "inputs": [
+        {
+          "name": "timeframe",
+          "label": "Timeframe",
+          "type": "select",
+          "options": [
+            "One month",
+            "One week"
+          ],
+          "sample": "One month"
+        },
+        {
+          "name": "cadence",
+          "label": "Cadence (posts per week)",
+          "type": "text",
+          "placeholder": "e.g. 3 posts per week",
+          "sample": "3 posts per week"
+        },
+        {
+          "name": "themes",
+          "label": "Themes & known events",
+          "type": "textarea",
+          "placeholder": "Pillars/topics to cover and any dated events (Bootcamp, a publication, a deadline)...",
+          "sample": "Pillars: training, explant analysis. Events: Vascular Bootcamp 18-20 March, new PubMed paper out mid-month."
+        },
+        {
+          "name": "channels",
+          "label": "Channels",
+          "type": "select",
+          "options": [
+            "LinkedIn",
+            "LinkedIn + website blog",
+            "LinkedIn + newsletter",
+            "All channels"
+          ],
+          "sample": "LinkedIn + website blog"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "Mirror input"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-infographic-spec-generator",
+      "name": "Infographic Spec Generator",
+      "category": "Communication",
+      "icon": "grid",
+      "tags": [
+        "Infographic",
+        "Design spec",
+        "Data viz"
+      ],
+      "owner": "Communication",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 30,
+      "inputs": [
+        {
+          "name": "topic",
+          "label": "Topic",
+          "type": "text",
+          "placeholder": "What the figure is about",
+          "sample": "Explant analysis process, from reception to failure report"
+        },
+        {
+          "name": "message",
+          "label": "Core message + key data",
+          "type": "textarea",
+          "placeholder": "What the figure must say, plus any real data points to show...",
+          "sample": "150+ explants received in 2023, analysed in 4 steps. Show the funnel and the safety outcome."
+        },
+        {
+          "name": "format",
+          "label": "Format",
+          "type": "select",
+          "options": [
+            "LinkedIn square",
+            "LinkedIn story",
+            "Report figure",
+            "Publication figure"
+          ],
+          "sample": "LinkedIn square"
+        },
+        {
+          "name": "audience",
+          "label": "Audience",
+          "type": "select",
+          "options": [
+            "Infer",
+            "Surgeons",
+            "Manufacturers",
+            "Researchers",
+            "Institutions",
+            "General HCP"
+          ],
+          "sample": "Manufacturers"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "Mirror input"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-website-content-generator",
+      "name": "Website Content Generator",
+      "category": "Communication",
+      "icon": "home",
+      "tags": [
+        "Web copy",
+        "SEO",
+        "FR/EN"
+      ],
+      "owner": "Communication",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 35,
+      "inputs": [
+        {
+          "name": "page_type",
+          "label": "Page type",
+          "type": "select",
+          "options": [
+            "Homepage",
+            "Training page",
+            "Authority page"
+          ],
+          "sample": "Authority page"
+        },
+        {
+          "name": "audience",
+          "label": "Primary audience",
+          "type": "text",
+          "placeholder": "Who the page is for",
+          "sample": "Medical-device manufacturers evaluating an independent test partner"
+        },
+        {
+          "name": "key_messages",
+          "label": "Key messages & proof assets",
+          "type": "textarea",
+          "placeholder": "The main points to make and which true proof points you can use...",
+          "sample": "ISO 13485 testing, ZEISS Xradia + Faxitron, 30 years of failure analysis, one point of contact from protocol to report."
+        },
+        {
+          "name": "keywords",
+          "label": "SEO / GEO keywords",
+          "type": "text",
+          "placeholder": "Target keywords (optional, will infer if blank)",
+          "sample": "medical device testing, explant analysis, vascular graft"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "English"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-branded-template-library",
+      "name": "Branded Template Library",
+      "category": "Communication",
+      "icon": "copy",
+      "tags": [
+        "Template",
+        "Brand",
+        "Document"
+      ],
+      "owner": "Communication",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 25,
+      "inputs": [
+        {
+          "name": "type",
+          "label": "Template type",
+          "type": "select",
+          "options": [
+            "Letter",
+            "Report / note",
+            "Presentation deck",
+            "Email scaffold"
+          ],
+          "sample": "Report / note"
+        },
+        {
+          "name": "purpose",
+          "label": "Purpose",
+          "type": "text",
+          "placeholder": "What this document is for",
+          "sample": "Quarterly explant-analysis activity report for a partner"
+        },
+        {
+          "name": "audience",
+          "label": "Audience",
+          "type": "text",
+          "placeholder": "Who receives it",
+          "sample": "A device manufacturer partner"
+        },
+        {
+          "name": "outline",
+          "label": "Sections / outline",
+          "type": "textarea",
+          "placeholder": "The sections you want (optional, a standard skeleton is used if blank)...",
+          "sample": "Summary, samples received, methods, findings, recommendations, next steps."
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "French",
+            "English"
+          ],
+          "sample": "French"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-prospect-outreach-drafter",
+      "name": "Prospect Outreach Drafter",
+      "category": "Communication",
+      "icon": "message-square",
+      "tags": [
+        "Outreach",
+        "Prospecting",
+        "FR/EN"
+      ],
+      "owner": "Business development",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 18,
+      "inputs": [
+        {
+          "name": "target",
+          "label": "Target profile / company",
+          "type": "textarea",
+          "placeholder": "Who they are, what they do, and any real hook you can use...",
+          "sample": "R&D director at a peripheral-stent manufacturer, recently published on stent fatigue. Company expanding its EU testing footprint."
+        },
+        {
+          "name": "objective",
+          "label": "Objective",
+          "type": "select",
+          "options": [
+            "Test-platform client",
+            "Training",
+            "Partnership",
+            "Research collaboration"
+          ],
+          "sample": "Test-platform client"
+        },
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "select",
+          "options": [
+            "LinkedIn",
+            "Email"
+          ],
+          "sample": "LinkedIn"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "select",
+          "options": [
+            "Warm-professional",
+            "Formal",
+            "Direct"
+          ],
+          "sample": "Warm-professional"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "English"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-qualiopi-program-generator",
+      "name": "Qualiopi Program Generator",
+      "category": "Training & Enablement",
+      "icon": "graduation-cap",
+      "tags": [
+        "Qualiopi",
+        "Programme",
+        "RNQ",
+        "FR"
+      ],
+      "owner": "Quality (RQ)",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 60,
+      "inputs": [
+        {
+          "name": "topic",
+          "label": "Training title / topic",
+          "type": "text",
+          "placeholder": "The action's title",
+          "sample": "Perfectionnement en abord vasculaire peripherique par simulation"
+        },
+        {
+          "name": "audience",
+          "label": "Public vise & prerequis",
+          "type": "text",
+          "placeholder": "Who it is for and any prerequisites",
+          "sample": "Internes et chefs de clinique en chirurgie vasculaire ; bases en chirurgie ouverte"
+        },
+        {
+          "name": "objectives",
+          "label": "Objectives, duration & format",
+          "type": "textarea",
+          "placeholder": "Learning objectives (or the topic to derive them), duration, and modalites (presentiel / simulation)...",
+          "sample": "3 objectifs operationnels autour de l'abord percutane. Duree 2 jours (14h). Presentiel + simulation haute-fidelite."
+        },
+        {
+          "name": "logistics",
+          "label": "Evaluation, tarifs, inscription, delais",
+          "type": "textarea",
+          "placeholder": "Assessment method, price, how to register, access lead time (bracketed for RQ if left blank)...",
+          "sample": "Evaluation par grille de geste. Tarif [a confirmer]. Inscription via le site. Delai d'acces 4 semaines."
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "French",
+            "English"
+          ],
+          "sample": "French"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-elearning-module-structurer",
+      "name": "E-learning Module Structurer",
+      "category": "Training & Enablement",
+      "icon": "book",
+      "tags": [
+        "E-learning",
+        "Curriculum",
+        "Bloom"
+      ],
+      "owner": "Training",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 50,
+      "inputs": [
+        {
+          "name": "specialty",
+          "label": "Specialty",
+          "type": "text",
+          "placeholder": "Clinical specialty of the module",
+          "sample": "Vascular surgery"
+        },
+        {
+          "name": "learners",
+          "label": "Target learners & level",
+          "type": "select",
+          "options": [
+            "Mixed",
+            "Residents",
+            "Healthcare professionals"
+          ],
+          "sample": "Residents"
+        },
+        {
+          "name": "objectives",
+          "label": "Learning objectives or topic",
+          "type": "textarea",
+          "placeholder": "The objectives to reach, or the topic to derive them from...",
+          "sample": "Understand vascular access techniques, indications, complications, and post-op monitoring."
+        },
+        {
+          "name": "moduleplan",
+          "label": "Modules, duration & assessment",
+          "type": "text",
+          "placeholder": "e.g. 4 modules, ~6h total, quiz + case-based",
+          "sample": "4 modules, 6h total, quiz per module + final case study"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "English"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-training-admin-doc-pack",
+      "name": "Training Admin Doc Pack",
+      "category": "Training & Enablement",
+      "icon": "clipboard-check",
+      "tags": [
+        "Badges",
+        "Emargement",
+        "RGPD"
+      ],
+      "owner": "Operations",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 30,
+      "inputs": [
+        {
+          "name": "participants",
+          "label": "Participant list",
+          "type": "textarea",
+          "placeholder": "One per line: Nom Prenom (organisme optional)...",
+          "sample": "Dubois Camille - CHU Strasbourg\nMartin Liam - CHU Lyon\nRossi Marco - Clinica Milano"
+        },
+        {
+          "name": "course",
+          "label": "Course title",
+          "type": "text",
+          "placeholder": "Title of the session",
+          "sample": "Bootcamp Vasculaire - Session 17"
+        },
+        {
+          "name": "session",
+          "label": "Date, time & place",
+          "type": "text",
+          "placeholder": "Session date, hours, venue",
+          "sample": "18-20 March 2026, 09:00-17:00, Centre eXplora, Strasbourg"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "French",
+            "English"
+          ],
+          "sample": "French"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-scientific-writing-summarizer",
+      "name": "Scientific Writing Summarizer",
+      "category": "Clinical & Quality",
+      "icon": "book",
+      "tags": [
+        "Summary",
+        "IMRAD",
+        "Scientific"
+      ],
+      "owner": "Scientific",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 25,
+      "inputs": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "select",
+          "options": [
+            "Summarize a paper",
+            "Draft a section"
+          ],
+          "sample": "Summarize a paper"
+        },
+        {
+          "name": "source",
+          "label": "Source text or brief",
+          "type": "textarea",
+          "placeholder": "Paste the paper/abstract to summarize, or the brief + key findings to draft from...",
+          "sample": "Paste abstract or study text here."
+        },
+        {
+          "name": "section",
+          "label": "Section (draft mode)",
+          "type": "select",
+          "options": [
+            "N/A (summarize)",
+            "Abstract",
+            "Introduction",
+            "Methods",
+            "Results",
+            "Discussion"
+          ],
+          "sample": "N/A (summarize)"
+        },
+        {
+          "name": "length",
+          "label": "Length",
+          "type": "select",
+          "options": [
+            "Structured abstract",
+            "One-line",
+            "Detailed"
+          ],
+          "sample": "Structured abstract"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror source",
+            "French",
+            "English"
+          ],
+          "sample": "Mirror source"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-stats-publication-chart",
+      "name": "Stats & Publication Chart",
+      "category": "Clinical & Quality",
+      "icon": "activity",
+      "tags": [
+        "Statistics",
+        "Chart",
+        "Publication"
+      ],
+      "owner": "Scientific",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 40,
+      "inputs": [
+        {
+          "name": "data",
+          "label": "Dataset (paste as CSV / TSV)",
+          "type": "textarea",
+          "placeholder": "Paste your table with a header row (comma or tab separated)...",
+          "sample": "group,latency_ms\nA,42\nA,45\nA,39\nB,58\nB,61\nB,55"
+        },
+        {
+          "name": "analysis",
+          "label": "Analysis intent",
+          "type": "textarea",
+          "placeholder": "Which comparison / correlation / variables to analyse...",
+          "sample": "Compare latency between group A and group B; is the difference significant?"
+        },
+        {
+          "name": "chart",
+          "label": "Chart type",
+          "type": "select",
+          "options": [
+            "Boxplot",
+            "Histogram",
+            "Bar chart",
+            "Scatter"
+          ],
+          "sample": "Boxplot"
+        },
+        {
+          "name": "standard",
+          "label": "Publication standard",
+          "type": "select",
+          "options": [
+            "Journal figure",
+            "Poster",
+            "Internal report"
+          ],
+          "sample": "Journal figure"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "English"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-rgpd-document-drafter",
+      "name": "RGPD Document Drafter",
+      "category": "Regulatory & Compliance",
+      "icon": "shield-check",
+      "tags": [
+        "RGPD",
+        "GDPR",
+        "Privacy",
+        "DPO"
+      ],
+      "owner": "Data protection (DPO)",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 45,
+      "inputs": [
+        {
+          "name": "doctype",
+          "label": "Document type",
+          "type": "select",
+          "options": [
+            "Privacy notice (mention d'information)",
+            "Record of processing (registre)",
+            "Privacy policy (politique)",
+            "Processor clause (DPA)",
+            "Consent form"
+          ],
+          "sample": "Privacy notice (mention d'information)"
+        },
+        {
+          "name": "processing",
+          "label": "Processing activity",
+          "type": "textarea",
+          "placeholder": "What data is processed, by whom, and why...",
+          "sample": "Collect training-registration data (name, email, profession, institution) to manage enrolment and send session logistics."
+        },
+        {
+          "name": "details",
+          "label": "Data categories, legal basis, recipients, retention",
+          "type": "textarea",
+          "placeholder": "Anything known; unknowns are bracketed for the DPO...",
+          "sample": "Legal basis: contract. Recipients: internal staff only. Retention: [to confirm with DPO]."
+        },
+        {
+          "name": "role",
+          "label": "Gepromed's role",
+          "type": "select",
+          "options": [
+            "Infer",
+            "Controller",
+            "Processor"
+          ],
+          "sample": "Controller"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "French"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-iso-gap-analysis",
+      "name": "ISO Gap Analysis",
+      "category": "Regulatory & Compliance",
+      "icon": "check",
+      "tags": [
+        "ISO 9001",
+        "ISO 13485",
+        "Gap analysis",
+        "QMS"
+      ],
+      "owner": "Quality (RQ)",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 50,
+      "inputs": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "select",
+          "options": [
+            "Diff two versions",
+            "ISO update summary"
+          ],
+          "sample": "Diff two versions"
+        },
+        {
+          "name": "versionA",
+          "label": "Version A (or standard name)",
+          "type": "textarea",
+          "placeholder": "Paste the current/old version text, or name the standard for a summary...",
+          "sample": "Paste clause text of the current version here."
+        },
+        {
+          "name": "versionB",
+          "label": "Version B (newer)",
+          "type": "textarea",
+          "placeholder": "Paste the newer version text (diff mode only)...",
+          "sample": "Paste clause text of the newer version here."
+        },
+        {
+          "name": "standard",
+          "label": "Standard",
+          "type": "select",
+          "options": [
+            "N/A",
+            "ISO 9001",
+            "ISO 13485"
+          ],
+          "sample": "ISO 13485"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "English"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-management-review-deck",
+      "name": "Management Review Deck",
+      "category": "Operations",
+      "icon": "list-checks",
+      "tags": [
+        "ISO 9001 9.3",
+        "Revue de direction",
+        "Minutes"
+      ],
+      "owner": "Quality (RQ)",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 90,
+      "inputs": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "select",
+          "options": [
+            "Deck (9.3 slides)",
+            "Minutes (compte rendu)"
+          ],
+          "sample": "Deck (9.3 slides)"
+        },
+        {
+          "name": "period",
+          "label": "Period",
+          "type": "text",
+          "placeholder": "The review period",
+          "sample": "Annual review 2025"
+        },
+        {
+          "name": "content",
+          "label": "Sections/KPIs & sources, or raw notes",
+          "type": "textarea",
+          "placeholder": "Deck: which sections/KPIs + where the figures come from. Minutes: paste the meeting notes...",
+          "sample": "KPIs: satisfaction 96%, 1150+ trained, 3 nonconformities closed. Include audit results and objectives. Figures from the 2025 quality dashboard."
+        },
+        {
+          "name": "audience",
+          "label": "Audience",
+          "type": "text",
+          "placeholder": "Who the review is for (optional)",
+          "sample": "Direction and quality committee"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "French",
+            "English"
+          ],
+          "sample": "French"
+        }
+      ]
+    },
+    {
+      "key": "gepromed-hr-drafting",
+      "name": "HR Drafting",
+      "category": "Operations",
+      "icon": "users",
+      "tags": [
+        "HR",
+        "Droit du travail",
+        "FR/EN"
+      ],
+      "owner": "Administration (RAF)",
+      "model": "Claude Sonnet 5",
+      "status": "Live",
+      "avgMinutesSaved": 40,
+      "inputs": [
+        {
+          "name": "doctype",
+          "label": "Document / request",
+          "type": "select",
+          "options": [
+            "Job offer",
+            "Internal rules (reglement interieur)",
+            "HR question / answer"
+          ],
+          "sample": "Job offer"
+        },
+        {
+          "name": "context",
+          "label": "Role or question + context",
+          "type": "textarea",
+          "placeholder": "The role to advertise, or the HR/legal question and its context...",
+          "sample": "Recruit a mechatronics engineer, CDI, based in Strasbourg, for the test-platform team."
+        },
+        {
+          "name": "legal",
+          "label": "Convention collective / legal basis",
+          "type": "text",
+          "placeholder": "Applicable CCN or legal basis (bracketed for RAF if unknown)",
+          "sample": "[CCN to confirm with RAF]"
+        },
+        {
+          "name": "language",
+          "label": "Output language",
+          "type": "select",
+          "options": [
+            "Mirror input",
+            "French",
+            "English"
+          ],
+          "sample": "French"
+        }
+      ]
+    }
+  ]
+}

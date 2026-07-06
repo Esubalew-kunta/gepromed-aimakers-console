@@ -30,3 +30,7 @@ yarn-error.log*
 # render / logs
 *.log
 .gstack/
+
+# generated skills migration: contains the real skill prompts (proprietary IP).
+# Kept out of this public repo; regenerate with scripts/build-skills-sql.mjs.
+/db/skills_real.sql

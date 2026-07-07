@@ -12,6 +12,7 @@ const NAV = [
   { href: "/contracts", label: "Contract templates", icon: "clipboard-check" },
   { href: "/skills", label: "Skills catalog", icon: "grid" },
   { href: "/automations", label: "Automations", icon: "bolt" },
+  { href: "/expenses", label: "Expense reports", icon: "clipboard-check" },
   { href: "/lms", label: "LMS handoff", icon: "graduation-cap" },
   { href: "/integrations", label: "Integrations", icon: "plug" },
   { href: "/roadmap", label: "Roadmap", icon: "map" },
@@ -48,10 +49,10 @@ export function Sidebar({ user }: { user: { name: string; title: string } }) {
 
       <aside
         className={`${
-          open ? "block" : "hidden"
-        } border-b border-ink-100 bg-white lg:block lg:min-h-screen lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r`}
+          open ? "flex" : "hidden"
+        } max-h-[80vh] flex-col border-b border-ink-100 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:max-h-screen lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r`}
       >
-        <div className="hidden items-center gap-3 px-5 py-5 lg:flex">
+        <div className="hidden shrink-0 items-center gap-3 px-5 py-5 lg:flex">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-lg font-bold text-white">
             G
           </div>
@@ -63,7 +64,7 @@ export function Sidebar({ user }: { user: { name: string; title: string } }) {
           </div>
         </div>
 
-        <nav className="space-y-0.5 px-3 py-3">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
           {NAV.map((item) => {
             const active = isActive(item.href);
             return (
@@ -87,7 +88,7 @@ export function Sidebar({ user }: { user: { name: string; title: string } }) {
           })}
         </nav>
 
-        <div className="mt-auto px-3 pb-5 lg:absolute lg:bottom-0 lg:w-64">
+        <div className="shrink-0 px-3 pb-5">
           <div className="rounded-xl border border-ink-100 bg-ink-50 p-3">
             <p className="truncate text-sm font-semibold text-ink-900">
               {user.name}

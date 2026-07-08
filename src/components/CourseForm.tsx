@@ -32,6 +32,9 @@ export function CourseForm({ course }: { course?: Course }) {
   const [sups, setSups] = useState<Supervisor[]>(course?.supervisors ?? []);
   const [program, setProgram] = useState<ProgramDay[]>(course?.program ?? []);
   const [preview, setPreview] = useState<string | null>(course?.image_url ?? null);
+  const [audienceTags, setAudienceTags] = useState<string[]>(
+    course?.target_audience ?? [],
+  );
 
   return (
     <form action={action} className="space-y-5">
@@ -39,6 +42,7 @@ export function CourseForm({ course }: { course?: Course }) {
       <input type="hidden" name="objectives" value={JSON.stringify(objectives)} />
       <input type="hidden" name="supervisors" value={JSON.stringify(sups)} />
       <input type="hidden" name="program" value={JSON.stringify(program)} />
+      <input type="hidden" name="target_audience" value={JSON.stringify(audienceTags)} />
       <input type="hidden" name="image_url_existing" value={course?.image_url ?? ""} />
 
       {/* Basics */}
@@ -157,6 +161,70 @@ export function CourseForm({ course }: { course?: Course }) {
             automatically as leads are confirmed.
           </p>
         ) : null}
+      </section>
+
+      {/* Qualiopi — public training detail fields */}
+      <section className="card space-y-4 p-6">
+        <div>
+          <h2 className="text-sm font-semibold text-ink-900">Qualiopi</h2>
+          <p className="text-xs text-ink-400">
+            Public visé, prérequis et méthodes — shown on the public training
+            detail page.
+          </p>
+        </div>
+        <Field
+          label="Public visé (séparé par des virgules)"
+          hint="Ex : Internes, IBODE, Infirmiers, Chirurgiens seniors, Résidents"
+        >
+          <input
+            value={audienceTags.join(", ")}
+            onChange={(e) =>
+              setAudienceTags(
+                e.target.value
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              )
+            }
+            placeholder="Internes, IBODE, Infirmiers"
+            className="input"
+          />
+        </Field>
+        <BiField
+          label="Prérequis"
+          name="prerequisites"
+          fr={course?.prerequisites?.fr}
+          en={course?.prerequisites?.en}
+          textarea
+        />
+        <BiField
+          label="Ressources pédagogiques"
+          name="pedagogical_resources"
+          fr={course?.pedagogical_resources?.fr}
+          en={course?.pedagogical_resources?.en}
+          textarea
+        />
+        <BiField
+          label="Méthodes d'enseignement"
+          name="teaching_methods"
+          fr={course?.teaching_methods?.fr}
+          en={course?.teaching_methods?.en}
+          textarea
+        />
+        <BiField
+          label="Méthodes d'évaluation"
+          name="evaluation_methods"
+          fr={course?.evaluation_methods?.fr}
+          en={course?.evaluation_methods?.en}
+          textarea
+        />
+        <BiField
+          label="Organisation / encadrement"
+          name="supervision_organization"
+          fr={course?.supervision_organization?.fr}
+          en={course?.supervision_organization?.en}
+          textarea
+        />
       </section>
 
       {/* Objectives repeater */}

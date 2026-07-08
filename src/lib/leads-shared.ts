@@ -2,16 +2,233 @@
  * Lead types + presentational constants shared by server and client code.
  * (No "server-only" here — the client LeadBoard imports these too.)
  * Data fetching lives in leads-data.ts (server-only).
+ *
+ * The participant pipeline is split into TWO distinct pathways ("parcours"):
+ *   • HelpMeSee  — foundation-imposed process (fixed steps).
+ *   • Bootcamp   — Gepromed's own Bootcamps & Workshops process.
+ * A status like "Confirmé" means different things in each world, so each
+ * parcours has its own ordered stage set, labels, tones and advance labels.
  */
 
-export type LeadStage = "lead" | "deposit_paid" | "contract_signed" | "confirmed";
+/* ------------------------------------------------------------------ *
+ * Parcours discriminator
+ * ------------------------------------------------------------------ */
 
-export type InterestLevel =
-  | "highly_interested"
-  | "interested"
-  | "neutral"
-  | "not_interested"
-  | "unreachable";
+export type Parcours = "helpmesee" | "bootcamp";
+
+export const PARCOURS: Parcours[] = ["helpmesee", "bootcamp"];
+
+export const PARCOURS_LABEL: Record<Parcours, string> = {
+  helpmesee: "HelpMeSee",
+  bootcamp: "Bootcamps & Workshops",
+};
+
+export const PARCOURS_TONE: Record<Parcours, string> = {
+  helpmesee: "bg-violet-50 text-violet-700",
+  bootcamp: "bg-teal-50 text-teal-700",
+};
+
+/** Default parcours used for any lead read from the DB without one set yet. */
+export const DEFAULT_PARCOURS: Parcours = "bootcamp";
+
+/* ------------------------------------------------------------------ *
+ * Stage sets — one ordered list per parcours
+ * ------------------------------------------------------------------ */
+
+export type HelpMeSeeStage =
+  | "lead"
+  | "enrollment_form"
+  | "dates_validation"
+  | "invoice"
+  | "elearning_check"
+  | "simulator_access"
+  | "confirmed"
+  | "done";
+
+export type BootcampStage =
+  | "lead"
+  | "prerequisites"
+  | "pre_registration"
+  | "deposit_contract"
+  | "practical_info"
+  | "elearning_sent"
+  | "confirmed"
+  | "deposit_refunded"
+  | "done";
+
+/** Any stage across either parcours. */
+export type Stage = HelpMeSeeStage | BootcampStage;
+
+/** Exit status available at any stage of either parcours. */
+export const NOT_INTERESTED = "not_interested" as const;
+export type ExitStatus = typeof NOT_INTERESTED;
+
+export const HELPMESEE_STAGES: readonly HelpMeSeeStage[] = [
+  "lead",
+  "enrollment_form",
+  "dates_validation",
+  "invoice",
+  "elearning_check",
+  "simulator_access",
+  "confirmed",
+  "done",
+] as const;
+
+export const BOOTCAMP_STAGES: readonly BootcampStage[] = [
+  "lead",
+  "prerequisites",
+  "pre_registration",
+  "deposit_contract",
+  "practical_info",
+  "elearning_sent",
+  "confirmed",
+  "deposit_refunded",
+  "done",
+] as const;
+
+/* ------------------------------------------------------------------ *
+ * FR labels (this console is primarily French)
+ * ------------------------------------------------------------------ */
+
+const HELPMESEE_STAGE_LABEL: Record<HelpMeSeeStage, string> = {
+  lead: "Lead — à suivre",
+  enrollment_form: "Enrollment form à compléter",
+  dates_validation: "Dates à valider",
+  invoice: "Facture à payer",
+  elearning_check: "E-learning à vérifier",
+  simulator_access: "Accès simulateur envoyé",
+  confirmed: "Confirmé",
+  done: "Terminé",
+};
+
+const BOOTCAMP_STAGE_LABEL: Record<BootcampStage, string> = {
+  lead: "Lead — à suivre",
+  prerequisites: "Prérequis à vérifier",
+  pre_registration: "Pré-inscription confirmée",
+  deposit_contract: "Caution / contrat reçus",
+  practical_info: "Infos pratiques (J-30)",
+  elearning_sent: "E-learning (J-15/7)",
+  confirmed: "Confirmé",
+  deposit_refunded: "Caution remboursée",
+  done: "Terminé",
+};
+
+/** Short caps used under the workflow stepper nodes. */
+const HELPMESEE_STAGE_SHORT: Record<HelpMeSeeStage, string> = {
+  lead: "Lead",
+  enrollment_form: "Form",
+  dates_validation: "Dates",
+  invoice: "Facture",
+  elearning_check: "E-learn",
+  simulator_access: "Simu",
+  confirmed: "Confirmé",
+  done: "Terminé",
+};
+
+const BOOTCAMP_STAGE_SHORT: Record<BootcampStage, string> = {
+  lead: "Lead",
+  prerequisites: "Prérequis",
+  pre_registration: "Pré-insc.",
+  deposit_contract: "Caution",
+  practical_info: "Infos",
+  elearning_sent: "E-learn",
+  confirmed: "Confirmé",
+  deposit_refunded: "Remb.",
+  done: "Terminé",
+};
+
+const HELPMESEE_STAGE_TONE: Record<HelpMeSeeStage, string> = {
+  lead: "bg-amber-50 text-amber-700",
+  enrollment_form: "bg-sky-50 text-sky-700",
+  dates_validation: "bg-indigo-50 text-indigo-700",
+  invoice: "bg-orange-50 text-orange-700",
+  elearning_check: "bg-violet-50 text-violet-700",
+  simulator_access: "bg-teal-50 text-teal-700",
+  confirmed: "bg-emerald-50 text-emerald-700",
+  done: "bg-ink-100 text-ink-600",
+};
+
+const BOOTCAMP_STAGE_TONE: Record<BootcampStage, string> = {
+  lead: "bg-amber-50 text-amber-700",
+  prerequisites: "bg-sky-50 text-sky-700",
+  pre_registration: "bg-indigo-50 text-indigo-700",
+  deposit_contract: "bg-violet-50 text-violet-700",
+  practical_info: "bg-cyan-50 text-cyan-700",
+  elearning_sent: "bg-orange-50 text-orange-700",
+  confirmed: "bg-emerald-50 text-emerald-700",
+  deposit_refunded: "bg-teal-50 text-teal-700",
+  done: "bg-ink-100 text-ink-600",
+};
+
+/** Label on the advance button = action that moves to the NEXT stage (null = terminal). */
+const HELPMESEE_ADVANCE_LABEL: Record<HelpMeSeeStage, string | null> = {
+  lead: "Enrollment form complété",
+  enrollment_form: "Valider les dates",
+  dates_validation: "Facture payée",
+  invoice: "Vérifier l'e-learning",
+  elearning_check: "Envoyer accès simulateur",
+  simulator_access: "Confirmer la place",
+  confirmed: "Marquer terminé",
+  done: null,
+};
+
+const BOOTCAMP_ADVANCE_LABEL: Record<BootcampStage, string | null> = {
+  lead: "Vérifier les prérequis",
+  prerequisites: "Confirmer la pré-inscription",
+  pre_registration: "Caution / contrat reçus",
+  deposit_contract: "Envoyer infos pratiques",
+  practical_info: "Envoyer l'e-learning",
+  elearning_sent: "Confirmer la place",
+  confirmed: "Caution remboursée",
+  deposit_refunded: "Marquer terminé",
+  done: null,
+};
+
+/* ------------------------------------------------------------------ *
+ * Parcours-aware helpers (tolerate unknown/legacy stage ids gracefully)
+ * ------------------------------------------------------------------ */
+
+/** Normalize a (possibly legacy / undefined) lead into a concrete parcours. */
+export function normalizeParcours(lead: { parcours?: Parcours | null }): Parcours {
+  return lead?.parcours === "helpmesee" ? "helpmesee" : DEFAULT_PARCOURS;
+}
+
+/** Ordered stage list for a parcours. */
+export function stagesFor(parcours: Parcours): readonly Stage[] {
+  return parcours === "helpmesee" ? HELPMESEE_STAGES : BOOTCAMP_STAGES;
+}
+
+/** FR label for a stage within a parcours (falls back to the raw id). */
+export function stageLabel(parcours: Parcours, stage: string): string {
+  const map = parcours === "helpmesee" ? HELPMESEE_STAGE_LABEL : BOOTCAMP_STAGE_LABEL;
+  return (map as Record<string, string>)[stage] ?? stage;
+}
+
+/** Short cap for a stage within a parcours (stepper node). */
+export function stageShort(parcours: Parcours, stage: string): string {
+  const map = parcours === "helpmesee" ? HELPMESEE_STAGE_SHORT : BOOTCAMP_STAGE_SHORT;
+  return (map as Record<string, string>)[stage] ?? stage;
+}
+
+/** Badge tone classes for a stage within a parcours. */
+export function stageTone(parcours: Parcours, stage: string): string {
+  const map = parcours === "helpmesee" ? HELPMESEE_STAGE_TONE : BOOTCAMP_STAGE_TONE;
+  return (map as Record<string, string>)[stage] ?? "bg-ink-100 text-ink-600";
+}
+
+/** Advance-button label for a stage within a parcours (null = terminal). */
+export function advanceLabelFor(parcours: Parcours, stage: string): string | null {
+  const map = parcours === "helpmesee" ? HELPMESEE_ADVANCE_LABEL : BOOTCAMP_ADVANCE_LABEL;
+  return (map as Record<string, string | null>)[stage] ?? null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Legacy single-pipeline exports — kept for backward compatibility.
+ * (Grep confirms only the leads UI/actions used these; retained as thin
+ * aliases so nothing that still references them breaks.)
+ * ------------------------------------------------------------------ */
+
+export type LeadStage = "lead" | "deposit_paid" | "contract_signed" | "confirmed";
 
 export const LEAD_STAGES: LeadStage[] = [
   "lead",
@@ -34,13 +251,16 @@ export const STAGE_TONE: Record<LeadStage, string> = {
   confirmed: "bg-emerald-50 text-emerald-700",
 };
 
-/** Label shown on the primary advance button for each stage (null = terminal). */
-export const ADVANCE_LABEL: Record<LeadStage, string | null> = {
-  lead: "Mark deposit paid",
-  deposit_paid: "Mark contract signed",
-  contract_signed: "Confirm seat",
-  confirmed: null,
-};
+/* ------------------------------------------------------------------ *
+ * Interest levels (unchanged)
+ * ------------------------------------------------------------------ */
+
+export type InterestLevel =
+  | "highly_interested"
+  | "interested"
+  | "neutral"
+  | "not_interested"
+  | "unreachable";
 
 export const INTEREST_LEVELS: InterestLevel[] = [
   "highly_interested",
@@ -100,15 +320,39 @@ export interface Lead {
   needs_accommodation: boolean;
   elearning_access: boolean;
   notes: string;
-  stage: LeadStage;
+  /** Which pathway this participant follows. */
+  parcours: Parcours;
+  stage: Stage;
   interest: InterestLevel;
   reminders_active: boolean;
   sign_channel: "online" | "manual" | null;
+
+  // Legacy single-pipeline timestamps (kept).
   deposit_paid_at: string | null;
   contract_signed_at: string | null;
   confirmed_at: string | null;
   lms_provisioned_at: string | null;
   lms_user_id: string | null;
+
+  // HelpMeSee parcours timestamps.
+  enrollment_form_at?: string | null;
+  dates_validated_at?: string | null;
+  invoice_paid_at?: string | null;
+  elearning_checked_at?: string | null;
+  simulator_access_at?: string | null;
+
+  // Bootcamp parcours timestamps.
+  prerequisites_ok_at?: string | null;
+  pre_registration_at?: string | null;
+  deposit_contract_at?: string | null;
+  practical_info_at?: string | null;
+  elearning_sent_at?: string | null;
+  deposit_refunded_at?: string | null;
+
+  // Shared tail-end / exit timestamps.
+  done_at?: string | null;
+  not_interested_at?: string | null;
+
   created_at: string;
   updated_at: string;
   trainings: {

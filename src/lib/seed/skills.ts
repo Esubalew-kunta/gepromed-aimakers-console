@@ -421,6 +421,66 @@ export const skills: Skill[] = [
       ].join("\n");
     },
   },
+  {
+    id: "qualiopi-program",
+    name: "Générateur de programme Qualiopi",
+    summary:
+      "Builds a branded, print-ready GEPROMED training program (programme de formation Qualiopi) from an Excel schedule + fiche metadata — renders parallel sub-group columns and every RNQ block as HTML you can Print → Save as PDF.",
+    category: "Training & Enablement",
+    icon: "graduation-cap",
+    tags: ["Qualiopi", "Formation", "PDF"],
+    owner: "People & Enablement",
+    model: "Gepromed Ops-LLM (demo)",
+    status: "Beta",
+    runsThisMonth: 12,
+    avgMinutesSaved: 120,
+    systemPrompt:
+      "You are the GEPROMED Qualiopi program generator. Given an Excel schedule (Planning sheet — one row per créneau: Jour, Heure début, Heure fin, Intitulé, Type, Groupe, Salle, Encadrant(s), Évalué) plus Qualiopi fiche metadata, produce a complete, brand-styled programme de formation covering every Référentiel National Qualité block. Concurrent rows (same day+time, different Groupe) render as parallel columns. Never invent prices, dates, or rates — bracket unknowns for the Responsable Qualité, who validates before publication.",
+    inputs: [
+      {
+        name: "schedule",
+        label: "Planning Excel (.xlsx) — one row per créneau",
+        type: "textarea",
+        placeholder:
+          "Colonnes : Jour | Heure début | Heure fin | Intitulé du créneau | Type | Groupe | Salle | Encadrant(s) | Évalué",
+        sample:
+          "Jour 1 | 10:45 | 12:30 | Atelier suture vasculaire | Atelier pratique | A | Sim-Lab 1 | Dr. Martin | Non\nJour 1 | 10:45 | 12:30 | Atelier exposition | Atelier pratique | B | Sim-Lab 2 | Dr. Nguyen | Non",
+      },
+      {
+        name: "fiche",
+        label: "Fiche metadata (intitulé, public visé, objectifs, tarifs…)",
+        type: "textarea",
+        placeholder: "Intitulé, public visé, prérequis, objectifs, durée, modalités, évaluation, tarifs, inscription…",
+        sample:
+          "Intitulé : Bootcamp Vasculaire — abord et anastomose sur simulateur\nPublic visé : chirurgiens et internes en chirurgie vasculaire\nDurée : 2 jours — 14 heures",
+      },
+    ],
+    demo: (v) => {
+      const fiche = v.fiche || "Intitulé : [à compléter]";
+      const title =
+        (fiche.match(/Intitul[ée]\s*:\s*(.+)/i)?.[1] || "Programme de formation").trim();
+      return [
+        `## Programme de formation Qualiopi — ${title}`,
+        "**Format :** HTML prêt à imprimer (Print → Save as PDF) · charte GEPROMED (navy #007AC2 / #0A2540, accent orange #ED6D1B).",
+        "",
+        "### Blocs RNQ rendus",
+        "- Intitulé · Public visé · Prérequis · Objectifs pédagogiques (verbes d'action, évaluables)",
+        "- Durée · Modalités pédagogiques · Moyens · Modalités d'évaluation",
+        "- Accessibilité handicap (processus) · Délais d'accès · Tarifs · Inscription · Contact",
+        "",
+        "### Planning détaillé (extrait)",
+        "| Créneau | Type | Groupe A | Groupe B |",
+        "|---|---|---|---|",
+        "| 10:45–12:30 | Atelier pratique | Suture vasculaire (Sim-Lab 1) | Exposition du champ (Sim-Lab 2) |",
+        "",
+        "_Les créneaux simultanés (même jour + horaire, groupes A/B) sont rendus en **colonnes parallèles**. Créneau « Tous » = pleine largeur._",
+        "",
+        "> Valeurs entre crochets à confirmer par le Responsable Qualité avant diffusion. Document de travail — GEPROMED valide avant publication.",
+        "",
+        "_Demo output generated offline. Live route: `GET /api/programs?session=bootcamp-vasculaire` or `POST /api/programs` with an .xlsx._",
+      ].join("\n");
+    },
+  },
 ];
 
 export function getSkill(id: string): Skill | undefined {

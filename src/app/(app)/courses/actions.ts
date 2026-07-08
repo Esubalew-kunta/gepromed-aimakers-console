@@ -68,6 +68,35 @@ export async function saveCourse(
     image_url = sb.storage.from("course-images").getPublicUrl(path).data.publicUrl;
   }
 
+  // Optional bilingual { fr, en } block — only include when at least one side
+  // has content, so saves keep working before db/course_qualiopi_fields.sql runs.
+  const bi = (k: string): { fr: string; en: string } | undefined => {
+    const fr = str(fd, `${k}_fr`);
+    const en = str(fd, `${k}_en`);
+    return fr || en ? { fr, en } : undefined;
+  };
+  let targetAudience: string[] | undefined;
+  try {
+    const parsed = JSON.parse(str(fd, "target_audience") || "[]");
+    if (Array.isArray(parsed)) {
+      targetAudience = parsed.map((t) => String(t).trim()).filter(Boolean);
+    }
+  } catch {
+    targetAudience = undefined;
+  }
+  const qualiopiExtras: Record<string, unknown> = {};
+  if (targetAudience && targetAudience.length) qualiopiExtras.target_audience = targetAudience;
+  for (const k of [
+    "prerequisites",
+    "pedagogical_resources",
+    "teaching_methods",
+    "evaluation_methods",
+    "supervision_organization",
+  ]) {
+    const v = bi(k);
+    if (v) qualiopiExtras[k] = v;
+  }
+
   const start = str(fd, "start_date");
   const row = {
     title: { fr: titleFr, en: str(fd, "title_en") },
@@ -94,8 +123,13 @@ export async function saveCourse(
   };
 
   // Only write image_url when we actually have one — so course saves keep
-  // working even before db/course_images.sql adds the column.
-  const payload = image_url !== null ? { ...row, image_url } : row;
+  // working even before db/course_images.sql adds the column. Same guard applies
+  // to the Qualiopi extras (db/course_qualiopi_fields.sql): only sent when set.
+  const payload = {
+    ...row,
+    ...qualiopiExtras,
+    ...(image_url !== null ? { image_url } : {}),
+  };
 
   const editingSlug = str(fd, "__slug");
   if (editingSlug) {

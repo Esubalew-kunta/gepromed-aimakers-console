@@ -12,6 +12,7 @@ import { SESSION_COOKIE } from "@/lib/constants";
 const PUBLIC_PREFIXES = [
   "/login",
   "/api/health",
+  "/api/programs",
   "/robots.txt",
   "/favicon.ico",
   "/icon.svg",

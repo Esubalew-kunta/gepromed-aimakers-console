@@ -30,7 +30,7 @@ export default async function LeadsPage() {
       <PageHeader
         eyebrow="Training pipeline"
         title="Lead management"
-        description="Track training leads from first request to confirmed seat: lead → deposit → contract → confirmed. Automates Nicole's manual, Excel-based follow-up."
+        description="Two participant parcours, each with its own steps. HelpMeSee (foundation): lead → enrollment form → dates → facture → e-learning → accès simulateur → confirmé → terminé. Bootcamps & Workshops (Gepromed): lead → prérequis → pré-inscription → caution/contrat → infos pratiques → e-learning → confirmé → caution remboursée → terminé. Automates Nicole's manual, Excel-based follow-up."
       />
 
       {!configured ? (

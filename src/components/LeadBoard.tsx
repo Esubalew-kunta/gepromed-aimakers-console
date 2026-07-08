@@ -5,18 +5,25 @@ import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 import {
   type Lead,
-  type LeadStage,
+  type Stage,
+  type Parcours,
   type InterestLevel,
-  LEAD_STAGES,
-  STAGE_LABEL,
-  STAGE_TONE,
-  ADVANCE_LABEL,
+  PARCOURS,
+  PARCOURS_LABEL,
+  PARCOURS_TONE,
+  stagesFor,
+  stageLabel,
+  stageShort,
+  stageTone,
+  advanceLabelFor,
+  normalizeParcours,
   INTEREST_LEVELS,
   INTEREST_LABEL,
 } from "@/lib/leads-shared";
 import {
   advanceStage,
   setInterest,
+  setNotInterested,
   toggleReminders,
   addComment,
   deleteLead,
@@ -27,11 +34,22 @@ import {
 } from "@/app/(app)/leads/actions";
 import type { ContractTemplate } from "@/lib/contracts-shared";
 
-const STEP_CAP: Record<LeadStage, string> = {
-  lead: "Lead",
-  deposit_paid: "Deposit",
-  contract_signed: "Contract",
-  confirmed: "Confirmed",
+/** Which stage timestamp field on a Lead corresponds to each stage id. */
+const STAGE_TS_FIELD: Record<Stage, keyof Lead | null> = {
+  lead: null,
+  confirmed: "confirmed_at",
+  done: "done_at",
+  enrollment_form: "enrollment_form_at",
+  dates_validation: "dates_validated_at",
+  invoice: "invoice_paid_at",
+  elearning_check: "elearning_checked_at",
+  simulator_access: "simulator_access_at",
+  prerequisites: "prerequisites_ok_at",
+  pre_registration: "pre_registration_at",
+  deposit_contract: "deposit_contract_at",
+  practical_info: "practical_info_at",
+  elearning_sent: "elearning_sent_at",
+  deposit_refunded: "deposit_refunded_at",
 };
 
 const INT_DOT: Record<InterestLevel, string> = {
@@ -55,7 +73,8 @@ function fmtRange(a?: string, b?: string) {
   return `${s.toLocaleDateString("en-GB", o)} – ${e.toLocaleDateString("en-GB", o)} ${e.getFullYear()}`;
 }
 
-type Tab = LeadStage | "all" | "not_interested";
+type Tab = Stage | "all" | "not_interested";
+type ParcoursFilter = Parcours | "all";
 
 export function LeadBoard({
   leads,
@@ -70,6 +89,7 @@ export function LeadBoard({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [parcoursFilter, setParcoursFilter] = useState<ParcoursFilter>("all");
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
   const [fSession, setFSession] = useState("");
@@ -131,24 +151,41 @@ export function LeadBoard({
     return Array.from(seen, ([id, title]) => ({ id, title }));
   }, [leads]);
 
+  // Stage tabs only make sense within a single parcours (the two stage sets
+  // differ). When viewing "all" parcours we show just All + Not interested.
+  const stageList: readonly Stage[] =
+    parcoursFilter === "all" ? [] : stagesFor(parcoursFilter);
+
+  // Reset the stage tab whenever the parcours scope changes (a stage tab from
+  // one parcours is meaningless in the other).
+  useEffect(() => {
+    setTab("all");
+  }, [parcoursFilter]);
+
   const counts = useMemo(() => {
+    const scoped =
+      parcoursFilter === "all"
+        ? leads
+        : leads.filter((l) => normalizeParcours(l) === parcoursFilter);
     const c: Record<string, number> = {
-      all: leads.length,
-      not_interested: leads.filter((l) => l.interest === "not_interested").length,
+      all: scoped.length,
+      not_interested: scoped.filter((l) => l.interest === "not_interested").length,
     };
-    for (const s of LEAD_STAGES) c[s] = leads.filter((l) => l.stage === s).length;
+    for (const s of stageList) c[s] = scoped.filter((l) => l.stage === s).length;
     return c;
-  }, [leads]);
+  }, [leads, parcoursFilter, stageList]);
 
   const tabs: Tab[] = [
     "all",
-    ...LEAD_STAGES,
+    ...stageList,
     ...(counts.not_interested > 0 ? (["not_interested"] as Tab[]) : []),
   ];
 
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
     return leads.filter((l) => {
+      if (parcoursFilter !== "all" && normalizeParcours(l) !== parcoursFilter)
+        return false;
       if (tab === "not_interested") {
         if (l.interest !== "not_interested") return false;
       } else if (tab !== "all" && l.stage !== tab) return false;
@@ -175,12 +212,37 @@ export function LeadBoard({
       }
       return true;
     });
-  }, [leads, tab, q, fSession, fInterest, fReminders, fAccommodation, fElearning, fDocStatus]);
+  }, [leads, parcoursFilter, tab, q, fSession, fInterest, fReminders, fAccommodation, fElearning, fDocStatus]);
 
   return (
     <div>
       {/* Toolbar */}
       <div className="card mb-4 p-4">
+        {/* Parcours split — HelpMeSee vs Bootcamps & Workshops */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-ink-400">
+            Parcours
+          </span>
+          <div className="inline-flex rounded-xl border border-ink-200 bg-white p-0.5">
+            {(["all", ...PARCOURS] as ParcoursFilter[]).map((p) => {
+              const active = parcoursFilter === p;
+              const label = p === "all" ? "Tous" : PARCOURS_LABEL[p];
+              return (
+                <button
+                  key={p}
+                  onClick={() => setParcoursFilter(p)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                    active
+                      ? "bg-brand-600 text-white"
+                      : "text-ink-500 hover:bg-ink-50 hover:text-ink-900"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative min-w-[220px] flex-1">
             <svg
@@ -292,7 +354,9 @@ export function LeadBoard({
                 ? "All"
                 : t === "not_interested"
                   ? "Not interested"
-                  : STAGE_LABEL[t];
+                  : parcoursFilter === "all"
+                    ? t
+                    : stageLabel(parcoursFilter, t);
             return (
               <button
                 key={t}
@@ -341,12 +405,15 @@ export function LeadBoard({
               }`}
             >
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-semibold text-ink-900">
                     {l.first_name} {l.last_name}
                   </span>
-                  <span className={`badge ${STAGE_TONE[l.stage]}`}>
-                    {STAGE_LABEL[l.stage]}
+                  <span className={`badge ${PARCOURS_TONE[normalizeParcours(l)]}`}>
+                    {PARCOURS_LABEL[normalizeParcours(l)]}
+                  </span>
+                  <span className={`badge ${stageTone(normalizeParcours(l), l.stage)}`}>
+                    {stageLabel(normalizeParcours(l), l.stage)}
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-[12.5px] text-ink-500">
@@ -441,18 +508,17 @@ function LeadDrawer({
   onDeleted: () => void;
 }) {
   const [note, setNote] = useState("");
-  const idx = LEAD_STAGES.indexOf(lead.stage);
-  const pct = idx <= 0 ? 0 : idx >= 3 ? 100 : (idx / 3) * 100;
-  const advance = ADVANCE_LABEL[lead.stage];
+  const parcours = normalizeParcours(lead);
+  const stages = stagesFor(parcours);
+  const idx = stages.indexOf(lead.stage);
+  const last = stages.length - 1;
+  const pct = idx <= 0 ? 0 : idx >= last ? 100 : (idx / last) * 100;
+  const advance = advanceLabelFor(parcours, lead.stage);
   const t = lead.trainings;
-  const tsFor = (s: LeadStage) =>
-    s === "deposit_paid"
-      ? fmtDay(lead.deposit_paid_at)
-      : s === "contract_signed"
-        ? fmtDay(lead.contract_signed_at)
-        : s === "confirmed"
-          ? fmtDay(lead.confirmed_at)
-          : "";
+  const tsFor = (s: Stage) => {
+    const f = STAGE_TS_FIELD[s];
+    return f ? fmtDay(lead[f] as string | null | undefined) : "";
+  };
 
   const sendNote = () => {
     const v = note.trim();
@@ -469,10 +535,13 @@ function LeadDrawer({
       {/* Header */}
       <div className="border-b border-ink-100 px-6 py-5">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="flex items-center gap-2.5 text-lg font-bold text-ink-900">
+          <h2 className="flex flex-wrap items-center gap-2.5 text-lg font-bold text-ink-900">
             {lead.first_name} {lead.last_name}
-            <span className={`badge ${STAGE_TONE[lead.stage]}`}>
-              {STAGE_LABEL[lead.stage]}
+            <span className={`badge ${PARCOURS_TONE[parcours]}`}>
+              {PARCOURS_LABEL[parcours]}
+            </span>
+            <span className={`badge ${stageTone(parcours, lead.stage)}`}>
+              {stageLabel(parcours, lead.stage)}
             </span>
           </h2>
           <button
@@ -504,7 +573,7 @@ function LeadDrawer({
             <div className="absolute left-[14%] right-[14%] top-[13px] h-0.5 bg-ink-200">
               <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
             </div>
-            {LEAD_STAGES.map((s, i) => {
+            {stages.map((s, i) => {
               const done = i < idx;
               const cur = i === idx;
               return (
@@ -520,8 +589,8 @@ function LeadDrawer({
                   >
                     {done ? "✓" : i + 1}
                   </div>
-                  <div className="mt-1.5 text-[11px] font-semibold text-ink-600">
-                    {STEP_CAP[s]}
+                  <div className="mt-1.5 text-center text-[11px] font-semibold text-ink-600">
+                    {stageShort(parcours, s)}
                   </div>
                   <div className="mt-0.5 text-[10px] tabular-nums text-ink-400">
                     {tsFor(s)}
@@ -540,14 +609,14 @@ function LeadDrawer({
           <div className="mt-4 flex flex-wrap items-center gap-2.5">
             {advance ? (
               <button
-                onClick={() => run(() => advanceStage(lead.id, lead.stage))}
+                onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
                 className="btn-primary !py-2 !text-sm"
               >
                 {advance} →
               </button>
             ) : (
               <span className="badge bg-emerald-50 text-emerald-700">
-                <Icon name="check" className="h-3.5 w-3.5" /> Seat confirmed
+                <Icon name="check" className="h-3.5 w-3.5" /> Parcours terminé
               </span>
             )}
             <select
@@ -574,6 +643,15 @@ function LeadDrawer({
               <Icon name="mail" className="h-3.5 w-3.5" />
               {lead.reminders_active ? "Reminders on" : "Reminders off"}
             </button>
+            {lead.interest !== "not_interested" ? (
+              <button
+                onClick={() => run(() => setNotInterested(lead.id))}
+                className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                title="Sortie du parcours"
+              >
+                Non intéressé
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -755,21 +833,26 @@ function DocState({ lead }: { lead: Lead }) {
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState("");
 
+  const parcours = normalizeParcours(lead);
   const doc = lead.documents?.[0] ?? null;
+  const confirmedOrLater =
+    lead.stage === "confirmed" ||
+    lead.stage === "done" ||
+    lead.stage === "deposit_refunded";
 
   const state = doc
     ? doc.verified
-      ? { text: "Signed & verified. Seat confirmed.", pill: "Verified", tone: "bg-emerald-50 text-emerald-700" }
+      ? { text: "Signé & vérifié. Place confirmée.", pill: "Verified", tone: "bg-emerald-50 text-emerald-700" }
       : {
-          text: `Uploaded & signed (${doc.sign_channel ?? "manual"}) — pending verification.`,
+          text: `Chargé & signé (${doc.sign_channel ?? "manual"}) — en attente de vérification.`,
           pill: "Pending verification",
           tone: "bg-amber-50 text-amber-700",
         }
-    : lead.stage === "deposit_paid"
-      ? { text: "Deposit paid — awaiting the signed engagement document.", pill: "Awaiting signature", tone: "bg-amber-50 text-amber-700" }
+    : confirmedOrLater
+      ? { text: "Aucun document en attente à ce stade.", pill: "None", tone: "bg-ink-100 text-ink-500" }
       : lead.stage === "lead"
-        ? { text: "Sent to the lead after the deposit is paid.", pill: "Not sent", tone: "bg-ink-100 text-ink-500" }
-        : { text: "No document on file.", pill: "None", tone: "bg-ink-100 text-ink-500" };
+        ? { text: "Envoyé au lead après les premières étapes du parcours.", pill: "Not sent", tone: "bg-ink-100 text-ink-500" }
+        : { text: "En attente du document d'engagement signé.", pill: "Awaiting signature", tone: "bg-amber-50 text-amber-700" };
 
   const view = () =>
     startBusy(async () => {
@@ -784,7 +867,7 @@ function DocState({ lead }: { lead: Lead }) {
     startBusy(async () => {
       const fd = new FormData();
       fd.append("file", file);
-      const r = await uploadDocument(lead.id, fd);
+      const r = await uploadDocument(lead.id, fd, parcours);
       if (r.error) setErr(r.error);
       else {
         setFile(null);
@@ -827,7 +910,7 @@ function DocState({ lead }: { lead: Lead }) {
             </button>
           ) : null}
         </div>
-      ) : lead.stage !== "confirmed" ? (
+      ) : !confirmedOrLater ? (
         /* No document → staff uploads the signed doc the lead returned */
         <div className="mt-2.5">
           <label className="mb-1 block text-[11px] font-medium text-ink-500">

@@ -1,10 +1,52 @@
 # Gepromed — Console (SaaS) STATUS
 
 Quick catch-up for any new session. Companion docs: `PROJECT_LOG.md` (history),
-`IMPLEMENTATION_PLAN.md` (the 11-phase plan), `n8n/SETUP.md` (automation).
+`IMPLEMENTATION_PLAN.md` (the 11-phase plan), `n8n/SETUP.md` (automation),
+`SKILLS_IMPORT_PLAN.md` (how the real skills were loaded).
 
 **This folder = the SaaS / AI console.** The public website is the sibling folder
 `gepromed-ai-makers-claude-sleepy-maxwell-otfodc` (see its `DESIGN_HANDOFF.md`).
+
+---
+
+## LATEST SESSION (2026-07-06): real skills loaded + demo data cleanup
+
+Client demo prep. All changes below are LIVE on the shared Supabase DB already
+(some done directly via REST), so both apps reflect them now.
+
+**Real skills are in (replaced the 8 demos).** The console reads skills from the
+Supabase `skills` table at runtime (`src/lib/skills-data.ts`); no app code changed.
+- The 16 real skills live in the sibling `../skills/` folder (Claude Agent Skill
+  packages). They were flattened into `skills` table rows by tooling in `scripts/`:
+  `skills.config.json` (metadata + run forms) + `build-skills-sql.mjs` (composes each
+  RICH `system_prompt` from the skill's portable instructions + inlined references,
+  strips memory/upload/script mechanics, adds a single-pass runtime footer) →
+  `db/skills_real.sql`.
+- **`db/skills_real.sql` is gitignored** (contains proprietary prompts; the console
+  repo is PUBLIC). Regenerate with `node scripts/build-skills-sql.mjs`; run the SQL by
+  hand in the Supabase SQL editor. To change a skill: edit `skills.config.json` or the
+  `skills/` folder, regenerate, re-run the SQL (idempotent upsert).
+- DB state: **16 skills, all `status='Live'`**, categories 7 Communication / 3 Training
+  & Enablement / 2 Regulatory / 2 Clinical / 2 Operations. `scripts/` + plan were pushed
+  to the console repo; the SQL was not.
+
+**Demo data cleaned (shared DB, via service_role REST):**
+- Leads reduced to **4 clean ones** (Élodie Bernard confirmed, Marco Rossi deposit_paid
+  on abord-vasculaire; Liam Schneider contract_signed, Sofia Marin deposit_paid on
+  endovasculaire). The other 10 (test junk) deleted; children cascade.
+- Courses freed from "full": `enrolled` is a stored column set only by the
+  `bump_enrolled` trigger on lead stage-change (NOT on insert/delete), so it was set
+  directly: abord 6/16, phaco-2026-01 4/12, phaco-2026-11 5/12, endov 8/14, all `open`.
+- Register flow re-verified end to end (create_lead RPC via anon → lead row).
+
+**Pre-demo KNOWN NOT-WORKING (by design or deferred):** website contact form is
+visual-only (no send); n8n emails not wired in this env (`/api/health` n8n/gmail false);
+live training titles still have em dashes (backend-owned, deferred); the Stats skill
+can't run its real Python compute (LLM-estimates from pasted data). Skills live-run was
+not click-tested (needs login) — `anthropic:true`, should work; test 1-2 before a demo.
+
+**Website fix same day:** training cards briefly showed a false "Complet" from the stale
+seed fallback; fixed by aligning the seed to live in the website repo (pushed).
 
 ---
 

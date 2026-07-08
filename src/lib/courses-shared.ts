@@ -52,6 +52,14 @@ export interface Course {
   photos: number | null;
   status: string;
   image_url: string | null;
+  // Qualiopi fields (public training detail pages). All optional so existing
+  // seed/DB rows keep compiling and Supabase rows without these columns still map.
+  target_audience?: string[]; // "public visé" tags (distinct from geography `audience`)
+  prerequisites?: Bi; // Prérequis
+  pedagogical_resources?: Bi; // Ressources pédagogiques
+  teaching_methods?: Bi; // Méthodes d'enseignement (présentiel, simulateur, atelier…)
+  evaluation_methods?: Bi; // Méthodes d'évaluation
+  supervision_organization?: Bi; // Organisation / encadrement
 }
 
 export function isUpcoming(c: Course, now = new Date()): boolean {

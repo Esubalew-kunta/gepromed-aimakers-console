@@ -4,17 +4,35 @@ import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import {
-  LEAD_STAGES,
-  type LeadStage,
+  stagesFor,
+  type Stage,
+  type Parcours,
   type InterestLevel,
 } from "@/lib/leads-data";
 
-/** Timestamp column set when a lead enters each stage. */
-const STAGE_TS: Record<LeadStage, string | null> = {
+/**
+ * Timestamp column set when a lead enters each stage. Covers the stages of
+ * BOTH parcours (HelpMeSee + Bootcamp). Stages shared across parcours (lead,
+ * confirmed, done) map to a single column. `lead` has no timestamp column.
+ */
+const STAGE_TS: Record<Stage, string | null> = {
+  // shared
   lead: null,
-  deposit_paid: "deposit_paid_at",
-  contract_signed: "contract_signed_at",
   confirmed: "confirmed_at",
+  done: "done_at",
+  // HelpMeSee
+  enrollment_form: "enrollment_form_at",
+  dates_validation: "dates_validated_at",
+  invoice: "invoice_paid_at",
+  elearning_check: "elearning_checked_at",
+  simulator_access: "simulator_access_at",
+  // Bootcamp
+  prerequisites: "prerequisites_ok_at",
+  pre_registration: "pre_registration_at",
+  deposit_contract: "deposit_contract_at",
+  practical_info: "practical_info_at",
+  elearning_sent: "elearning_sent_at",
+  deposit_refunded: "deposit_refunded_at",
 };
 
 async function logEvent(leadId: string, type: string, payload: unknown) {
@@ -23,26 +41,50 @@ async function logEvent(leadId: string, type: string, payload: unknown) {
   await sb.from("lead_events").insert({ lead_id: leadId, type, payload });
 }
 
-/** Advance a lead to the next pipeline stage, stamping the right timestamp. */
-export async function advanceStage(leadId: string, current: LeadStage) {
+/**
+ * Advance a lead to the next stage of ITS parcours, stamping the right
+ * timestamp. The ordered stage list is resolved from the lead's parcours, so
+ * HelpMeSee and Bootcamp leads walk their own distinct pathways.
+ */
+export async function advanceStage(leadId: string, current: Stage, parcours: Parcours) {
   const sb = supabaseServer();
   if (!sb) return;
-  const idx = LEAD_STAGES.indexOf(current);
-  if (idx < 0 || idx >= LEAD_STAGES.length - 1) return;
-  const next = LEAD_STAGES[idx + 1];
+  const stages = stagesFor(parcours);
+  const idx = stages.indexOf(current);
+  if (idx < 0 || idx >= stages.length - 1) return;
+  const next = stages[idx + 1];
 
   const patch: Record<string, unknown> = { stage: next };
   const tsCol = STAGE_TS[next];
   if (tsCol) patch[tsCol] = new Date().toISOString();
 
-  // Confirming a seat also fires the mock LMS handoff.
+  // Confirming a seat also fires the mock LMS handoff (both parcours).
   if (next === "confirmed") {
     patch.lms_provisioned_at = new Date().toISOString();
     patch.lms_user_id = `GLMS-${leadId.slice(0, 8).toUpperCase()}`;
   }
 
   await sb.from("leads").update(patch).eq("id", leadId);
-  await logEvent(leadId, `stage:${next}`, { from: current });
+  await logEvent(leadId, `stage:${next}`, { from: current, parcours });
+  revalidatePath("/leads");
+}
+
+/**
+ * Mark a lead as "not interested" — the exit status available at any stage of
+ * either parcours. Stops reminders and stamps the exit time.
+ */
+export async function setNotInterested(leadId: string) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  await sb
+    .from("leads")
+    .update({
+      interest: "not_interested",
+      reminders_active: false,
+      not_interested_at: new Date().toISOString(),
+    })
+    .eq("id", leadId);
+  await logEvent(leadId, "exit:not_interested", {});
   revalidatePath("/leads");
 }
 
@@ -89,9 +131,15 @@ export async function deleteLead(leadId: string) {
 /**
  * Staff uploads the lead's signed engagement document (manual signing path).
  * Stores the file in the private `documents` bucket, records a documents row
- * (pending verification), and moves the lead to contract_signed.
+ * (pending verification), and — for the Bootcamp parcours — moves the lead to
+ * `deposit_contract` (caution / contrat reçus). HelpMeSee has no signed
+ * engagement step, so the stage is left unchanged there.
  */
-export async function uploadDocument(leadId: string, fd: FormData): Promise<{ error?: string }> {
+export async function uploadDocument(
+  leadId: string,
+  fd: FormData,
+  parcours: Parcours = "bootcamp",
+): Promise<{ error?: string }> {
   const sb = supabaseServer();
   if (!sb) return { error: "Supabase not configured." };
   const file = fd.get("file");
@@ -111,15 +159,19 @@ export async function uploadDocument(leadId: string, fd: FormData): Promise<{ er
     signed: true,
     verified: false,
   });
-  await sb
-    .from("leads")
-    .update({
-      sign_channel: "manual",
-      stage: "contract_signed",
-      contract_signed_at: new Date().toISOString(),
-    })
-    .eq("id", leadId);
-  await logEvent(leadId, "document:uploaded", { channel: "manual" });
+
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    sign_channel: "manual",
+    contract_signed_at: now,
+  };
+  // Bootcamp: receiving the signed caution/contrat advances to deposit_contract.
+  if (parcours === "bootcamp") {
+    patch.stage = "deposit_contract";
+    patch.deposit_contract_at = now;
+  }
+  await sb.from("leads").update(patch).eq("id", leadId);
+  await logEvent(leadId, "document:uploaded", { channel: "manual", parcours });
   revalidatePath("/leads");
   return {};
 }

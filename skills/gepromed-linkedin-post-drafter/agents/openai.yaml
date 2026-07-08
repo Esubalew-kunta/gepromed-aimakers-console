@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED LinkedIn Post Drafter"
+  short_description: "Draft and format-check on-brand GEPROMED LinkedIn content (FR/EN) — text, carousel, image, event, publication. Reads human, never AI-generated. Drafts only; a human validates and publishes."
+  categories:
+    - writing
+    - communication
+    - marketing
+  example_prompts:
+    - "Rédige un post LinkedIn pour annoncer le prochain Vascular Bootcamp."
+    - "Draft a carousel explaining the implant life cycle, company page voice."
+    - "Annonce notre nouvelle publication scientifique sur l'analyse d'explants."
+    - "Write an event recap post for last week's training session, with hashtags."
+    - "Vérifie que ce post respecte le format et la charte GEPROMED."

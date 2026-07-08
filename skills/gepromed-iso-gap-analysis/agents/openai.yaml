@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED ISO Gap Analysis"
+  short_description: "Clause-by-clause gap analysis between two supplied ISO standard/document versions (what changed, QMS impact, required actions) and ISO 9001/13485 update summaries (FR/EN). Works only from supplied text — never invents clause wording. Flagged for RQ validation."
+  categories:
+    - quality
+    - compliance
+  example_prompts:
+    - "Compare ces deux versions de la norme, clause par clause, avec l'impact sur notre SMQ."
+    - "Diff these two ISO 9001 document versions and build a gap-analysis table."
+    - "Résume les changements de structure de l'ISO 9001 (clauses auditables 4–10)."
+    - "Map our internal procedure against this ISO 13485 requirement and flag the gaps."

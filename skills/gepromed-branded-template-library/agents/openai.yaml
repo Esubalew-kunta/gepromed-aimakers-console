@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED Branded Template Library"
+  short_description: "Generate GEPROMED-branded templates — letter (.docx), report (.docx), presentation (.pptx), or email (text) — applying the charte (blue/orange/logo/fonts) in FR/EN. Templates only — the author fills and validates."
+  categories:
+    - document-generation
+    - design
+  example_prompts:
+    - "Crée un modèle de rapport d'activité GEPROMED pour la plateforme de test : synthèse, activité, faits marquants, perspectives."
+    - "Make a branded GEPROMED slide deck (pptx) introducing our test platform to a manufacturer, in English."
+    - "Modèle de courrier formel de demande de soutien à une institution, en français."
+    - "Build a GEPROMED email template to propose explant analysis to a device manufacturer."

@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED Training Admin Doc Pack"
+  short_description: "From a participant list + session details, generate GEPROMED badges, a feuille d'émargement, and an RGPD notice as brand-styled docs (FR/EN). Drafts only — the DPO validates the notice before distribution."
+  categories:
+    - education
+    - document-generation
+  example_prompts:
+    - "Prépare les badges et la feuille d'émargement pour le Bootcamp Vasculaire des 12-13 octobre. Liste : Claire Martin (CHU Strasbourg), Hugo Dubois (interne CHU Lyon)."
+    - "Generate the attendance sheet and GDPR notice for our device-vigilance workshop, English, here's the roster."
+    - "Pack admin complet pour la formation simulation ophtalmologie, et bracket le contact DPO et la durée de conservation."
+    - "Make printable name badges for these 12 participants, with the course title on each."

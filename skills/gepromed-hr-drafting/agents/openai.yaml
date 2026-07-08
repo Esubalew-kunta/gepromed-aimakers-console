@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED HR Drafting (droit du travail)"
+  short_description: "Draft HR documents and answer HR/labour-law questions — offre d'emploi, règlement intérieur, HR-legal responses (FR/EN). Drafts only; the RAF validates. Never invents law."
+  categories:
+    - hr
+    - legal
+    - writing
+  example_prompts:
+    - "Rédige une offre d'emploi pour un poste d'ingénieur d'essais (CDI, Strasbourg)."
+    - "Draft a job posting for a clinical research associate, fixed-term contract."
+    - "Prépare la structure de notre règlement intérieur, avec les rubriques obligatoires à vérifier."
+    - "Comment gérer une période d'essai pour ce poste ? Quelles règles le RAF doit-il vérifier ?"
+    - "Réponds à cette problématique RH : un salarié demande un congé pour [motif] — que vérifier ?"

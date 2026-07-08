@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED Qualiopi Program Generator"
+  short_description: "Generate a Qualiopi-compliant GEPROMED training program as a brand-styled .docx (FR/EN), with every RNQ block. Drafts only — the Responsable Qualité validates before publication."
+  categories:
+    - education
+    - document-generation
+  example_prompts:
+    - "Crée un programme de formation Qualiopi pour un bootcamp d'anastomose vasculaire sur simulateur, 2 jours, pour chirurgiens et internes."
+    - "Build a Qualiopi training programme in English for a device-vigilance course: half e-learning, half on-site workshop, for clinical research associates."
+    - "Rédige la fiche programme Qualiopi d'une formation à la simulation ophtalmologique, et bracket tout ce que le RQ doit confirmer."
+    - "Update the assessment and accessibility blocks of our existing vascular training programme."

@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED Management Review Deck (ISO 9001 §9.3)"
+  short_description: "Build the ISO 9001 §9.3 revue de direction deck (.pptx) and the meeting minutes / compte rendu (FR/EN). Drafts only — the RQ validates; figures are bracketed."
+  categories:
+    - quality
+    - productivity
+    - presentations
+  example_prompts:
+    - "Prépare la revue de direction 2025 (ISO 9001 §9.3) en PowerPoint, avec nos KPIs qualité."
+    - "Build the ISO 9001 §9.3 management-review deck for the 2024 period."
+    - "Structure les slides de la revue de direction pour la période janvier–décembre."
+    - "Rédige le compte rendu de la revue de direction à partir de ces notes de réunion."
+    - "Write the management-review minutes from the meeting notes below, with the actions table."

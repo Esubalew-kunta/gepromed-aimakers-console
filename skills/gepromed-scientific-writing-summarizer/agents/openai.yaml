@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED Scientific Writing & Summarizer"
+  short_description: "Summarize scientific papers faithfully, or draft IMRAD manuscript sections from a brief (FR/EN). Never invents data or citations — references are human-verified. Drafts only; Author/RQ validates."
+  categories:
+    - research
+    - writing
+    - science
+  example_prompts:
+    - "Résume cet article scientifique en résumé structuré, public pair."
+    - "Summarize this study for a lay funder audience, keep the uncertainty."
+    - "Rédige l'introduction d'un article sur la dégradation des explants vasculaires."
+    - "Draft the Discussion section for a vascular-surgery journal from these findings."
+    - "Write a 250-word structured abstract from this brief — mark every citation needed."

@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED Statistics & Publication Chart"
+  short_description: "Compute statistics (mean, SD, distribution, correlation, group comparisons) from a CSV/Excel/TXT dataset and produce a brand-styled, publication-grade GEPROMED chart (FR/EN). A rigorous EasyMedStats alternative. Computes only from your data — the human (Scientific) validates."
+  categories:
+    - data-analysis
+    - science
+  example_prompts:
+    - "Compare la perméabilité entre les deux dispositifs et fais un boxplot prêt pour publication."
+    - "Run a t-test on these two groups and give me a publication boxplot with the p-value."
+    - "Y a-t-il une corrélation entre le diamètre et la pression d'éclatement ? Nuage de points pour l'article."
+    - "Describe this variable's distribution with mean and SD, brand-styled histogram."

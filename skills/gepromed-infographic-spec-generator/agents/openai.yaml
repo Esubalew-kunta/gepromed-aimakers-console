@@ -1,0 +1,12 @@
+interface:
+  display_name: "GEPROMED Infographic Spec Generator"
+  short_description: "Produce on-charte GEPROMED infographic / technical-figure design specs (FR/EN) — layout, hierarchy, brand colors, data-viz, copy, dimensions — for LinkedIn or report/publication figures. Specs only; a designer executes and a human validates."
+  categories:
+    - design
+    - data-visualization
+    - communication
+  example_prompts:
+    - "Fais-moi le design d'une infographie sur les +150 explants reçus en 2023."
+    - "Spec a LinkedIn stat card for our 1150 professionals trained since 2018."
+    - "Design a greyscale-safe publication figure comparing expected vs observed service life."
+    - "Lay out a process diagram of the implant cycle with the orange O motif."

@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED Website Content Generator"
+  short_description: "Generate Ibexa-ready website content blocks for GEPROMED — H1/H2, intro, sections, CTA, and SEO/GEO meta tags (FR/EN). Storytelling-strong, proof-led. Drafts only — Comms publishes."
+  categories:
+    - writing
+    - marketing
+    - content
+  example_prompts:
+    - "Rédige la page formation Bootcamp Vasculaire pour le site, champs Qualiopi inclus."
+    - "Write the vascular explant analysis authority page for manufacturers and clinicians."
+    - "Génère la home : hero, intro, les quatre piliers, et les meta tags."
+    - "Draft the testing/R&D page — proof-led, SEO and GEO aware, with a clear CTA."
+    - "Write the meta title and meta description for the clinical studies page."

@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED E-learning Module Structurer"
+  short_description: "Build the structure of GEPROMED e-learning modules (vascular surgery, ophthalmology, more): modules → chapters → sections → Bloom-aligned objectives → assessment checkpoints (FR/EN). Drafts only — the SME validates."
+  categories:
+    - education
+    - instructional-design
+    - content
+  example_prompts:
+    - "Structure un module e-learning de chirurgie vasculaire pour internes, 3 modules, 6h, quiz cas."
+    - "Outline an ophthalmology e-learning course for surgeons, 2 modules, case-based + simulation checklist."
+    - "Fais l'arborescence : modules → chapitres → sections → objectifs → évaluations."
+    - "Design Bloom-aligned learning objectives and assessment checkpoints for this topic."
+    - "Plan a blended vascular course that pre-loads knowledge before the simulation day."

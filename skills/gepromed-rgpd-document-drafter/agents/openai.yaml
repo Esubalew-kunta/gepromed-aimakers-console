@@ -1,0 +1,13 @@
+interface:
+  display_name: "GEPROMED RGPD / GDPR Document Drafter"
+  short_description: "Draft & review RGPD/GDPR documents — registre des traitements, mentions d'information, politique de confidentialité, DPA, consentement (FR/EN). Drafts only; the DPO validates."
+  categories:
+    - compliance
+    - legal
+    - writing
+  example_prompts:
+    - "Prépare une mention d'information RGPD pour le formulaire d'inscription aux formations."
+    - "Draft a GDPR privacy notice for our website contact form."
+    - "Rédige une entrée de registre des traitements pour la base de données donateurs."
+    - "Review and tidy this data-processing agreement (DPA) clause for a cloud provider."
+    - "Prépare un formulaire de recueil de consentement pour une étude de recherche clinique."

@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED Email Reformulation"
+  short_description: "Rewrite, correct, translate, and re-tone emails into clear, on-brand GEPROMED communication (FR/EN). Drafts only — the human sends."
+  categories:
+    - writing
+    - communication
+  example_prompts:
+    - "Reformule ce mail pour un chirurgien, ton professionnel mais chaleureux."
+    - "Rewrite this outreach email to a device manufacturer — remove the hype."
+    - "Translate and adapt this message for an institutional funder, formal tone."
+    - "Make this supplier follow-up firmer, with a clear deadline."

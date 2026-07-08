@@ -1,0 +1,11 @@
+interface:
+  display_name: "GEPROMED Prospect Outreach Drafter"
+  short_description: "Analyse a target profile/company and draft a personalized, non-generic outreach message (LinkedIn or email, FR/EN) that does not look automated. Drafts only — no sending, no automation, no CRM. A human personalizes and sends."
+  categories:
+    - sales
+    - communication
+  example_prompts:
+    - "Écris un message d'approche LinkedIn pour ce chirurgien vasculaire, ton pair-à-pair."
+    - "Draft a cold email to this device manufacturer about independent testing and explant analysis."
+    - "Rédige une prise de contact à ce chercheur pour une collaboration scientifique."
+    - "Reach out to this institution about funding our training programme — formal tone."

@@ -1,0 +1,12 @@
+interface:
+  display_name: "GEPROMED Editorial Calendar Builder"
+  short_description: "Build a short-term GEPROMED content calendar (FR/EN) on a two-layer model — fixed immediate week + adjustable rest of month. Exports .csv and .md. Drafts only; a human validates before scheduling."
+  categories:
+    - planning
+    - communication
+    - marketing
+  example_prompts:
+    - "Construis un calendrier éditorial LinkedIn pour le mois de juin, 2 posts/semaine."
+    - "Plan our content for the next 4 weeks around the Vascular Bootcamp."
+    - "On poste quoi cette semaine ? Donne-moi la semaine fixe."
+    - "Build a posting schedule that rotates the four pillars and exports a CSV."

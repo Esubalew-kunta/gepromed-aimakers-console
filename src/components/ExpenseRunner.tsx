@@ -4,454 +4,494 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ExpenseUploader } from "./ExpenseUploader";
 import {
-  type ExpenseCategory,
-  type ExpenseReceiptFixture,
-  EXPENSE_CATEGORIES,
-  matchReceipt,
-  eurAmountOf,
-  manualFormulaOf,
-  formatOriginalAmount,
-  formatEUR,
-  groupByTrip,
-} from "@/lib/seed/expenses";
+  CATEGORY_KEYS,
+  CATEGORY_COLUMN,
+  type AnalyzeResult,
+  type ProcessedExpense,
+  type CategoryKey,
+} from "@/lib/expenses/types";
 
-type Stage = "idle" | "processing" | "review" | "done";
-type LogKind = "info" | "ok" | "warn";
-interface LogLine {
-  line: string;
-  kind: LogKind;
-}
-interface MatchedItem {
-  fileName: string;
-  fixture: ExpenseReceiptFixture;
-}
+type Phase = "setup" | "analyzing" | "review" | "committing" | "done";
 
-const KIND_COLORS: Record<LogKind, string> = {
-  info: "text-ink-400",
-  ok: "text-emerald-400",
-  warn: "text-amber-400",
-};
-
-const DEMO_FILES = [
-  "Flight tickets Venice-Strasbourg March 2026.pdf",
-  "2202242138164.pdf (same ticket — try it with the one above)",
-  "bus Venice Airport March 2026.pdf",
-  "train Belluno Venice.pdf",
-  "Strasbourg bus 03.2026.pdf",
-  "Reservation_Vol.pdf",
-  "Reservation_Hotel_1.pdf",
-  "Reservation_Hotel_2.pdf (same stay — try it with the one above)",
-  "Tampa.pdf",
-  "FactureAirFrance26042026.pdf",
-  "effia-Facture-13626376.pdf",
-];
-
-/**
- * Deduplicates and merges matched files before processing, per the PRD's
- * named edge cases: two files can be the exact same fiscal document (a
- * duplicate ticket), or a booking confirmation + its payment receipt for the
- * same stay (merge into one line, keep the actually-paid amount).
- */
-function reconcileMatches(items: MatchedItem[]): { kept: MatchedItem[]; notes: LogLine[] } {
-  const notes: LogLine[] = [];
-
-  const seenIds = new Map<string, MatchedItem>();
-  const afterIdDedup: MatchedItem[] = [];
-  for (const item of items) {
-    const existing = seenIds.get(item.fixture.id);
-    if (existing) {
-      notes.push({
-        kind: "warn",
-        line: `Duplicate detected: "${item.fileName}" is the same fiscal document as "${existing.fileName}" — counted once.`,
-      });
-    } else {
-      seenIds.set(item.fixture.id, item);
-      afterIdDedup.push(item);
-    }
-  }
-
-  const byMergeGroup = new Map<string, MatchedItem[]>();
-  const standalone: MatchedItem[] = [];
-  for (const item of afterIdDedup) {
-    const group = item.fixture.mergeGroup;
-    if (!group) {
-      standalone.push(item);
-      continue;
-    }
-    const arr = byMergeGroup.get(group) ?? [];
-    arr.push(item);
-    byMergeGroup.set(group, arr);
-  }
-
-  const kept: MatchedItem[] = [...standalone];
-  for (const group of byMergeGroup.values()) {
-    const primary = group.find((g) => g.fixture.isMergePrimary) ?? group[0];
-    kept.push(primary);
-    if (primary.fixture.mergeNote) {
-      notes.push({ kind: "warn", line: primary.fixture.mergeNote });
-    }
-  }
-
-  return { kept, notes };
-}
+const eur = (n: number | null | undefined) =>
+  n == null ? "—" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
 
 export function ExpenseRunner() {
-  const [stage, setStage] = useState<Stage>("idle");
-  const [matched, setMatched] = useState<MatchedItem[]>([]);
-  const [unmatched, setUnmatched] = useState<string[]>([]);
-  const [logLines, setLogLines] = useState<LogLine[]>([]);
-  const [minutesSaved, setMinutesSaved] = useState(0);
-  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, ExpenseCategory>>({});
-  const [preparedBy, setPreparedBy] = useState("Nathalie");
-  const [downloading, setDownloading] = useState(false);
-  const timeouts = useRef<number[]>([]);
-  const logBoxRef = useRef<HTMLDivElement>(null);
+  const [phase, setPhase] = useState<Phase>("setup");
+  const [savedMaster, setSavedMaster] = useState(false);
+  const [extractionReady, setExtractionReady] = useState(true);
+  const [masterFile, setMasterFile] = useState<File | null>(null);
+  const [useSaved, setUseSaved] = useState(false);
+  const [receipts, setReceipts] = useState<File[]>([]);
+  const [description, setDescription] = useState("");
+  const [traveler, setTraveler] = useState("");
+  const [tripHint, setTripHint] = useState("");
+  const [result, setResult] = useState<AnalyzeResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [committedName, setCommittedName] = useState<string | null>(null);
+  const masterInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    return () => {
-      timeouts.current.forEach((id) => window.clearTimeout(id));
-    };
+    fetch("/api/expenses/master")
+      .then((r) => r.json())
+      .then((d) => {
+        setSavedMaster(Boolean(d.savedMaster));
+        setUseSaved(Boolean(d.savedMaster));
+        setExtractionReady(d.extractionReady !== false);
+      })
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const box = logBoxRef.current;
-    if (box) box.scrollTop = box.scrollHeight;
-  }, [logLines]);
+  const masterReady = masterFile != null || (useSaved && savedMaster);
+  const canAnalyze = masterReady && receipts.length > 0 && description.trim().length > 0;
 
-  const reset = () => {
-    timeouts.current.forEach((id) => window.clearTimeout(id));
-    timeouts.current = [];
-    setStage("idle");
-    setMatched([]);
-    setUnmatched([]);
-    setLogLines([]);
-    setMinutesSaved(0);
-    setCategoryOverrides({});
-    setDownloading(false);
-  };
-
-  const runProcessing = (items: MatchedItem[], preNotes: LogLine[], missed: string[]) => {
-    setLogLines([]);
-    setMinutesSaved(0);
-
-    type Step = { delay: number; line: string; kind: LogKind; addMinutes?: number };
-    const steps: Step[] = [];
-    let t = 250;
-    const gap = 420;
-
-    preNotes.forEach((n) => {
-      steps.push({ delay: t, ...n });
-      t += gap;
-    });
-
-    for (const { fileName, fixture: r } of items) {
-      steps.push({ delay: t, line: `Reading "${fileName}"…`, kind: "info" });
-      t += gap;
-      const lines = r.lineCount ?? 1;
-      steps.push({
-        delay: t,
-        line:
-          lines > 1
-            ? `Found ${lines} line items: ${r.category} — ${formatOriginalAmount(r)} each (${r.vendor})`
-            : `Found: ${r.category} — ${formatOriginalAmount(r)} (${r.vendor})`,
-        kind: "ok",
-      });
-      t += gap;
-      if (r.fxRate) {
-        const formula = manualFormulaOf(r);
-        steps.push({
-          delay: t,
-          line: `Converting at the ${r.fxRateSource} for ${r.invoiceDateLabel} → ${formatEUR(eurAmountOf(r))}`,
-          kind: "ok",
-        });
-        t += gap;
-        steps.push({
-          delay: t,
-          line: `You would have typed "${formula}" by hand — done automatically instead`,
-          kind: "warn",
-        });
-        t += gap;
-      }
-      steps.push({
-        delay: t,
-        line:
-          lines > 1
-            ? `Filed as ${lines} lines under "${r.category}", trip "${r.trip.label}" (sheet ${r.trip.sheetName})`
-            : `Filed under "${r.category}", trip "${r.trip.label}" (sheet ${r.trip.sheetName})`,
-        kind: "ok",
-        addMinutes: r.minutesSaved,
-      });
-      t += gap;
-      if (r.alert) {
-        steps.push({ delay: t, line: `⚠ ${r.alert}`, kind: "warn" });
-        t += gap;
-      }
-    }
-    for (const name of missed) {
-      steps.push({
-        delay: t,
-        line: `"${name}" is not part of this demo set — in production this would be read live.`,
-        kind: "warn",
-      });
-      t += gap;
-    }
-    steps.push({
-      delay: t,
-      line: `✔ Done — ${items.length} document${items.length === 1 ? "" : "s"} processed, ${missed.length} skipped.`,
-      kind: "info",
-    });
-    t += 500;
-
-    steps.forEach((s) => {
-      const id = window.setTimeout(() => {
-        setLogLines((prev) => [...prev, { line: s.line, kind: s.kind }]);
-        if (s.addMinutes) setMinutesSaved((m) => m + (s.addMinutes ?? 0));
-      }, s.delay);
-      timeouts.current.push(id);
-    });
-    const finalId = window.setTimeout(() => setStage("review"), t + 300);
-    timeouts.current.push(finalId);
-  };
-
-  const handleFiles = (files: File[]) => {
-    const rawMatched: MatchedItem[] = [];
-    const newUnmatched: string[] = [];
-    for (const f of files) {
-      const fixture = matchReceipt(f.name);
-      if (fixture) rawMatched.push({ fileName: f.name, fixture });
-      else newUnmatched.push(f.name);
-    }
-    if (rawMatched.length === 0 && newUnmatched.length === 0) return;
-    const { kept, notes } = reconcileMatches(rawMatched);
-    setMatched(kept);
-    setUnmatched(newUnmatched);
-    setStage("processing");
-    runProcessing(kept, notes, newUnmatched);
-  };
-
-  const effectiveReceipts: ExpenseReceiptFixture[] = matched.map(({ fixture }) => ({
-    ...fixture,
-    category: categoryOverrides[fixture.id] ?? fixture.category,
-  }));
-
-  const handleConfirm = async () => {
-    setDownloading(true);
+  async function analyze() {
+    setError(null);
+    setPhase("analyzing");
     try {
-      const { buildDemoWorkbook, downloadBlob } = await import("@/lib/xlsx/buildDemoWorkbook");
-      const blob = buildDemoWorkbook(effectiveReceipts, preparedBy.trim() || "Nathalie");
-      downloadBlob(
-        `notes-de-frais-demo-${(preparedBy.trim() || "nathalie").toLowerCase().replace(/\s+/g, "-")}.xlsx`,
-        blob,
-      );
-      setStage("done");
-    } finally {
-      setDownloading(false);
+      const fd = new FormData();
+      if (masterFile) fd.append("master", masterFile);
+      else fd.append("useSaved", "true");
+      receipts.forEach((f) => fd.append("files", f));
+      fd.append("description", description);
+      if (traveler.trim()) fd.append("traveler", traveler.trim());
+      if (tripHint.trim()) fd.append("tripHint", tripHint.trim());
+      const res = await fetch("/api/expenses/analyze", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Échec de l'analyse.");
+      setResult(data as AnalyzeResult);
+      setPhase("review");
+    } catch (e) {
+      setError((e as Error).message);
+      setPhase("setup");
     }
-  };
+  }
+
+  function patch(id: string, changes: Partial<ProcessedExpense>) {
+    setResult((prev) =>
+      prev ? { ...prev, expenses: prev.expenses.map((e) => (e.id === id ? { ...e, ...changes } : e)) } : prev,
+    );
+  }
+
+  async function commit() {
+    if (!result) return;
+    setError(null);
+    setPhase("committing");
+    try {
+      const fd = new FormData();
+      if (masterFile) fd.append("master", masterFile);
+      else fd.append("useSaved", "true");
+      fd.append("expenses", JSON.stringify(result.expenses));
+      fd.append("employeeName", "Nathalie");
+      fd.append("runId", result.runId);
+      fd.append("fileName", result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx");
+      const res = await fetch("/api/expenses/commit", { method: "POST", body: fd });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Échec de l'écriture.");
+      }
+      const blob = await res.blob();
+      const name = result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setCommittedName(name);
+      setPhase("done");
+    } catch (e) {
+      setError((e as Error).message);
+      setPhase("review");
+    }
+  }
+
+  function reset() {
+    setPhase("setup");
+    setReceipts([]);
+    setResult(null);
+    setDescription("");
+    setTraveler("");
+    setTripHint("");
+    setCommittedName(null);
+    setError(null);
+  }
 
   return (
     <div className="space-y-6">
-      {stage === "idle" ? (
-        <>
-          <ExpenseUploader onFiles={handleFiles} />
-          <div className="card p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">
-              Try it with the real 11-file sample set
-            </p>
-            <p className="mt-1 text-xs text-ink-500">
-              From the shared <code className="rounded bg-ink-100 px-1 py-0.5">/finance</code>{" "}
-              folder — drop them all at once to see duplicates and merges get handled, or a
-              few at a time:
-            </p>
-            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-              {DEMO_FILES.map((name) => (
-                <li key={name} className="flex items-center gap-2 text-xs text-ink-600">
-                  <Icon name="clipboard-check" className="h-3.5 w-3.5 text-ink-300" />
-                  {name}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      ) : null}
+      {!extractionReady && (
+        <Banner tone="amber">
+          L&apos;extraction IA (ANTHROPIC_API_KEY) n&apos;est pas configurée sur ce serveur — l&apos;analyse ne
+          fonctionnera pas tant que la clé n&apos;est pas ajoutée.
+        </Banner>
+      )}
+      {error && <Banner tone="red">{error}</Banner>}
 
-      {stage === "processing" || stage === "review" || stage === "done" ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div
-            ref={logBoxRef}
-            className="max-h-80 overflow-y-auto rounded-xl bg-ink-900 p-4 font-mono text-xs leading-relaxed lg:col-span-2"
-          >
-            <p className="mb-2 text-ink-500">$ process expense batch</p>
-            {logLines.map((l, i) => (
-              <div key={i} className={KIND_COLORS[l.kind]}>
-                {l.line}
-              </div>
-            ))}
-            {stage === "processing" ? (
-              <span className="mt-1 inline-block h-3 w-2 animate-pulse bg-ink-500" />
-            ) : null}
-          </div>
-          <div className="card flex flex-col justify-center p-5">
-            <p className="text-sm text-ink-500">Time saved so far</p>
-            <p className="mt-1 text-3xl font-bold text-ink-900">{minutesSaved} min</p>
-            {stage === "processing" ? (
-              <p className="mt-1 text-xs text-ink-400">
-                vs. reading, converting and typing each line by hand
-              </p>
-            ) : (
-              <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
-                <Icon name="check" className="h-4 w-4" /> Done
-              </p>
-            )}
-          </div>
-        </div>
-      ) : null}
+      {(phase === "setup" || phase === "analyzing") && (
+        <SetupCard
+          savedMaster={savedMaster}
+          useSaved={useSaved}
+          setUseSaved={setUseSaved}
+          masterFile={masterFile}
+          setMasterFile={setMasterFile}
+          masterInputRef={masterInputRef}
+          receipts={receipts}
+          setReceipts={setReceipts}
+          description={description}
+          setDescription={setDescription}
+          traveler={traveler}
+          setTraveler={setTraveler}
+          tripHint={tripHint}
+          setTripHint={setTripHint}
+          canAnalyze={canAnalyze}
+          analyzing={phase === "analyzing"}
+          onAnalyze={analyze}
+        />
+      )}
 
-      {stage === "review" ? (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-ink-900">
-                Review before anything is saved
-              </p>
-              <p className="text-xs text-ink-500">
-                Adjust a category if needed, then confirm.
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-ink-500">Prepared by</span>
-              <input
-                className="input w-40"
-                value={preparedBy}
-                onChange={(e) => setPreparedBy(e.target.value)}
-              />
+      {phase === "review" && result && (
+        <ReviewTable result={result} onPatch={patch} onCommit={commit} onBack={reset} />
+      )}
+      {phase === "committing" && <Progress label="Écriture dans le fichier Excel de Nathalie…" />}
+      {phase === "done" && <DoneCard name={committedName} total={result?.grandTotalEUR ?? 0} onReset={reset} />}
+    </div>
+  );
+}
+
+function Banner({ tone, children }: { tone: "amber" | "red" | "green"; children: React.ReactNode }) {
+  const map = {
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    red: "border-red-200 bg-red-50 text-red-700",
+    green: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  } as const;
+  return <div className={`rounded-xl border px-4 py-2.5 text-xs font-medium ${map[tone]}`}>{children}</div>;
+}
+
+function Progress({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-ink-200 bg-white px-5 py-8">
+      <Icon name="clipboard-check" className="h-5 w-5 animate-pulse text-brand-600" />
+      <span className="text-sm font-medium text-ink-700">{label}</span>
+    </div>
+  );
+}
+
+function SetupCard(props: {
+  savedMaster: boolean;
+  useSaved: boolean;
+  setUseSaved: (v: boolean) => void;
+  masterFile: File | null;
+  setMasterFile: (f: File | null) => void;
+  masterInputRef: React.RefObject<HTMLInputElement | null>;
+  receipts: File[];
+  setReceipts: (f: File[]) => void;
+  description: string;
+  setDescription: (v: string) => void;
+  traveler: string;
+  setTraveler: (v: string) => void;
+  tripHint: string;
+  setTripHint: (v: string) => void;
+  canAnalyze: boolean;
+  analyzing: boolean;
+  onAnalyze: () => void;
+}) {
+  const p = props;
+  return (
+    <div className="space-y-5 rounded-2xl border border-ink-200 bg-white p-5">
+      <div>
+        <div className="text-sm font-semibold text-ink-900">1 · Fichier maître (Matrice de Nathalie)</div>
+        <p className="mt-0.5 text-xs text-ink-400">
+          Les dépenses seront ajoutées dans ce fichier (une feuille par voyage). Le fichier n&apos;est jamais remplacé.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          {p.savedMaster && (
+            <label className="flex items-center gap-2 text-xs font-medium text-ink-700">
+              <input type="checkbox" checked={p.useSaved} onChange={(e) => p.setUseSaved(e.target.checked)} />
+              Utiliser le dernier fichier enregistré
             </label>
-          </div>
-
-          {groupByTrip(effectiveReceipts).map((g) => (
-            <div key={g.trip.id} className="card p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-ink-900">{g.trip.label}</p>
-                  <p className="text-xs text-ink-400">
-                    {g.trip.lieu} · {g.trip.period} · sheet &quot;{g.trip.sheetName}&quot;
-                  </p>
-                  <p className="mt-1 text-xs text-ink-500">
-                    Traveler:{" "}
-                    <span className="font-medium text-ink-700">{g.trip.traveler}</span>
-                    {g.trip.travelerSource === "deduced" ? (
-                      <span className="ml-1 text-ink-400">(deduced from the batch)</span>
-                    ) : null}
-                    {g.trip.travelerSource === "unresolved" ? (
-                      <span className="ml-1 text-amber-600">(needs Nathalie to confirm)</span>
-                    ) : null}
-                  </p>
-                </div>
-                <p className="text-lg font-bold text-ink-900">{formatEUR(g.totalEur)}</p>
-              </div>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase text-ink-400">
-                      <th className="py-1 pr-2">Date</th>
-                      <th className="py-1 pr-2">Description</th>
-                      <th className="py-1 pr-2">Category</th>
-                      <th className="py-1 pr-2">Original</th>
-                      <th className="py-1 pr-0 text-right">EUR</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.receipts.map((r) => (
-                      <tr key={r.id} className="border-t border-ink-100">
-                        <td className="whitespace-nowrap py-1.5 pr-2 text-ink-600">
-                          {r.invoiceDateLabel}
-                        </td>
-                        <td className="py-1.5 pr-2 text-ink-700">
-                          {r.vendor}
-                          {r.alert ? (
-                            <span
-                              title={r.alert}
-                              className="ml-1.5 inline-block rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
-                            >
-                              alert
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="py-1.5 pr-2">
-                          <select
-                            className="rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs"
-                            value={categoryOverrides[r.id] ?? r.category}
-                            onChange={(e) =>
-                              setCategoryOverrides((prev) => ({
-                                ...prev,
-                                [r.id]: e.target.value as ExpenseCategory,
-                              }))
-                            }
-                          >
-                            {EXPENSE_CATEGORIES.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="whitespace-nowrap py-1.5 pr-2 text-ink-500">
-                          {r.originalCurrency !== "EUR" ? formatOriginalAmount(r) : "—"}
-                        </td>
-                        <td className="whitespace-nowrap py-1.5 pr-0 text-right font-medium text-ink-900">
-                          {formatEUR(eurAmountOf(r))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-
-          {unmatched.length > 0 ? (
-            <div className="card border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              {unmatched.length} file{unmatched.length === 1 ? "" : "s"} skipped (not part of
-              this demo set): {unmatched.join(", ")}
-            </div>
-          ) : null}
-
-          <div className="flex items-center justify-between">
-            <button className="btn-ghost" onClick={reset}>
-              Start over
-            </button>
-            <button className="btn-primary" onClick={handleConfirm} disabled={downloading}>
-              {downloading ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  Building workbook…
-                </>
-              ) : (
-                <>
-                  <Icon name="check" className="h-4 w-4" /> Confirm &amp; save to workbook
-                </>
-              )}
-            </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={() => p.masterInputRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+          >
+            <Icon name="clipboard-check" className="h-4 w-4" />
+            {p.masterFile ? p.masterFile.name : "Importer le fichier Matrice (.xlsx)"}
+          </button>
+          <input
+            ref={p.masterInputRef}
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              p.setMasterFile(f);
+              if (f) p.setUseSaved(false);
+              e.target.value = "";
+            }}
+          />
         </div>
-      ) : null}
+      </div>
 
-      {stage === "done" ? (
-        <div className="card flex flex-col items-center gap-3 p-8 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-            <Icon name="check" className="h-6 w-6" />
-          </div>
-          <p className="text-lg font-bold text-ink-900">Workbook ready</p>
-          <p className="max-w-sm text-sm text-ink-500">
-            The .xlsx downloaded to your computer, laid out exactly like the real
-            template — {minutesSaved} minutes of manual entry done in seconds. Open it
-            in Excel to check.
-          </p>
-          <button className="btn-ghost mt-2" onClick={reset}>
-            Start a new batch
+      <div>
+        <div className="text-sm font-semibold text-ink-900">2 · Justificatifs du lot</div>
+        <div className="mt-2">
+          <ExpenseUploader onFiles={(f) => p.setReceipts([...p.receipts, ...f])} disabled={p.analyzing} />
+        </div>
+        {p.receipts.length > 0 && (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {p.receipts.map((f, i) => (
+              <li key={i} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-50 px-2.5 py-1 text-xs text-ink-600">
+                {f.name}
+                <button
+                  type="button"
+                  onClick={() => p.setReceipts(p.receipts.filter((_, j) => j !== i))}
+                  className="text-ink-400 hover:text-red-600"
+                  aria-label="Retirer"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <div className="text-sm font-semibold text-ink-900">3 · Contexte du dépôt</div>
+        <p className="mt-0.5 text-xs text-ink-400">
+          Décrivez le lot (voyageur + objet) — sert à renseigner le voyageur/l&apos;objet quand ils sont absents des justificatifs. L&apos;IA n&apos;invente rien d&apos;autre.
+        </p>
+        <textarea
+          value={p.description}
+          onChange={(e) => p.setDescription(e.target.value)}
+          rows={2}
+          placeholder="Ex : Frais de Cristina Rocchi — déplacement Venise ↔ Strasbourg, mars 2026."
+          className="mt-2 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm"
+        />
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <input
+            value={p.traveler}
+            onChange={(e) => p.setTraveler(e.target.value)}
+            placeholder="Voyageur (optionnel)"
+            className="rounded-lg border border-ink-200 px-3 py-2 text-sm"
+          />
+          <input
+            value={p.tripHint}
+            onChange={(e) => p.setTripHint(e.target.value)}
+            placeholder="Voyage / lieu (optionnel, ex : Venise)"
+            className="rounded-lg border border-ink-200 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 border-t border-ink-100 pt-4">
+        <button
+          type="button"
+          disabled={!p.canAnalyze || p.analyzing}
+          onClick={p.onAnalyze}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Icon name="clipboard-check" className="h-4 w-4" />
+          {p.analyzing ? "Analyse en cours…" : "Analyser les justificatifs"}
+        </button>
+        {!p.canAnalyze && !p.analyzing && (
+          <span className="text-xs text-ink-400">Fichier maître + justificatifs + description requis.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewTable({
+  result,
+  onPatch,
+  onCommit,
+  onBack,
+}: {
+  result: AnalyzeResult;
+  onPatch: (id: string, c: Partial<ProcessedExpense>) => void;
+  onCommit: () => void;
+  onBack: () => void;
+}) {
+  const active = result.expenses.filter((e) => !e.duplicateOfId && !e.idempotentSkip);
+  const excluded = result.expenses.filter((e) => e.duplicateOfId || e.idempotentSkip);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-ink-600">
+          <span className="font-semibold text-ink-900">{active.length}</span> dépense(s) à enregistrer ·{" "}
+          <span className="font-semibold text-ink-900">{eur(result.grandTotalEUR)}</span> · {result.groups.length} feuille(s)
+          {excluded.length > 0 && <> · {excluded.length} ignorée(s) (doublons/déjà traités)</>}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onBack} className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-600 hover:bg-ink-50">
+            Recommencer
+          </button>
+          <button
+            onClick={onCommit}
+            disabled={active.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            <Icon name="clipboard-check" className="h-4 w-4" />
+            Valider &amp; générer le fichier
           </button>
         </div>
-      ) : null}
+      </div>
+
+      {result.alerts.length > 0 && (
+        <Banner tone="amber">
+          <div className="font-semibold">Alertes à vérifier</div>
+          <ul className="mt-1 list-disc pl-4">
+            {result.alerts.slice(0, 12).map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+        </Banner>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-ink-200 bg-white">
+        <table className="w-full min-w-[1050px] text-left text-xs">
+          <thead className="bg-ink-50 text-ink-500">
+            <tr>
+              {["Justificatif", "Date", "Fournisseur", "Catégorie", "Montant d'origine", "Montant EUR", "TVA", "Feuille", "Voyageur", "Objet", "État"].map((h) => (
+                <th key={h} className="px-2.5 py-2 font-semibold">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-ink-100">
+            {active.map((e) => (
+              <tr key={e.id} className={e.needsReview ? "bg-amber-50/50" : ""}>
+                <td className="px-2.5 py-2 text-ink-500">{e.sourceFile}</td>
+                <td className="px-2.5 py-2">
+                  <input
+                    value={e.issueDateLabel || ""}
+                    onChange={(ev) => onPatch(e.id, { issueDateLabel: ev.target.value })}
+                    className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                  />
+                </td>
+                <td className="px-2.5 py-2 text-ink-700">{e.vendor || "—"}</td>
+                <td className="px-2.5 py-2">
+                  <select
+                    value={e.category ?? ""}
+                    onChange={(ev) => onPatch(e.id, { category: (ev.target.value || null) as CategoryKey | null })}
+                    className="rounded border border-ink-200 px-1.5 py-1"
+                  >
+                    <option value="">— à choisir —</option>
+                    {CATEGORY_KEYS.map((k) => (
+                      <option key={k} value={k}>{CATEGORY_COLUMN[k].label}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-2.5 py-2 text-ink-600">
+                  {e.originalAmount != null ? `${e.originalAmount} ${e.originalCurrency || ""}` : "—"}
+                  {e.fx && (
+                    <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR — ${e.fx.source} ${e.fx.rateDate}`}>
+                      @ {e.fx.rate} ({e.fx.source})
+                    </div>
+                  )}
+                </td>
+                <td className="px-2.5 py-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={e.amountEUR ?? ""}
+                    onChange={(ev) => onPatch(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
+                    className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                  />
+                </td>
+                <td className="px-2.5 py-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={e.vatRecoverable ?? ""}
+                    onChange={(ev) => onPatch(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
+                    className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                  />
+                </td>
+                <td className="px-2.5 py-2">
+                  <input
+                    value={e.sheetName}
+                    onChange={(ev) => onPatch(e.id, { sheetName: ev.target.value })}
+                    className="w-28 rounded border border-ink-200 px-1.5 py-1"
+                  />
+                </td>
+                <td className="px-2.5 py-2">
+                  <input
+                    value={e.traveler}
+                    onChange={(ev) => onPatch(e.id, { traveler: ev.target.value })}
+                    className="w-32 rounded border border-ink-200 px-1.5 py-1"
+                  />
+                </td>
+                <td className="px-2.5 py-2">
+                  <input
+                    value={e.purpose || ""}
+                    onChange={(ev) => onPatch(e.id, { purpose: ev.target.value })}
+                    className="w-36 rounded border border-ink-200 px-1.5 py-1"
+                  />
+                </td>
+                <td className="px-2.5 py-2">
+                  {e.needsReview ? (
+                    <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title={e.reviewReasons.join(" · ")}>
+                      à vérifier
+                    </span>
+                  ) : (
+                    <span className="inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">ok</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {excluded.map((e) => (
+              <tr key={e.id} className="bg-ink-50/60 text-ink-400">
+                <td className="px-2.5 py-2">{e.sourceFile}</td>
+                <td className="px-2.5 py-2">{e.issueDateLabel || "—"}</td>
+                <td className="px-2.5 py-2">{e.vendor || "—"}</td>
+                <td className="px-2.5 py-2" colSpan={7}>
+                  {e.duplicateOfId ? "Doublon — compté une seule fois" : "Déjà traité lors d'un run précédent"}
+                </td>
+                <td className="px-2.5 py-2">
+                  <span className="inline-block rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-600">ignoré</span>
+                </td>
+              </tr>
+            ))}
+            {active.length === 0 && excluded.length === 0 && (
+              <tr>
+                <td colSpan={11} className="px-2.5 py-8 text-center text-ink-400">
+                  Aucun justificatif exploitable dans ce lot.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {result.skipped.length > 0 && (
+        <div className="text-xs text-ink-400">
+          Fichiers ignorés : {result.skipped.map((s) => `${s.file} (${s.reason})`).join(" · ")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DoneCard({ name, total, onReset }: { name: string | null; total: number; onReset: () => void }) {
+  return (
+    <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+        <Icon name="clipboard-check" className="h-6 w-6" />
+      </div>
+      <div>
+        <div className="text-sm font-semibold text-emerald-900">Fichier généré et téléchargé</div>
+        <p className="mt-1 text-xs text-emerald-700">
+          {name} · total cumulé {eur(total)}. Ouvrez-le, vérifiez, corrigez si besoin — les lignes validées sont verrouillées au prochain run.
+        </p>
+      </div>
+      <button onClick={onReset} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+        Traiter un nouveau lot
+      </button>
     </div>
   );
 }

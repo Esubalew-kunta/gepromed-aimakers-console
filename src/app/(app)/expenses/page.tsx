@@ -7,16 +7,10 @@ export default function ExpensesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Finance"
-        title="Expense reports"
-        description="Drop in travel receipts and get them read, currency-converted, categorized and filed into a trip workbook — no manual retyping."
+        eyebrow="Finance · Notes de frais"
+        title="Notes de frais"
+        description="Déposez les justificatifs : lecture IA, conversion des devises au taux officiel de la date d'émission, catégorisation, puis ajout dans le fichier Matrice de Nathalie (une feuille par voyage). Vous vérifiez et validez à la fin."
       />
-
-      <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">
-        Demo mode · Reading the receipts and looking up exchange rates is
-        simulated for this walkthrough. The drag-and-drop, the review step and
-        the downloaded workbook are real.
-      </div>
 
       <ExpenseRunner />
     </>

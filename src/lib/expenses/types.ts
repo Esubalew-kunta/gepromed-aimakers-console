@@ -1,0 +1,222 @@
+import { z } from "zod";
+
+/**
+ * Shared types + Zod schemas for the Notes-de-frais (expense notes) feature.
+ *
+ * Pipeline: upload receipts -> Claude vision extraction (ReceiptExtraction)
+ * -> normalize + FX (ProcessedExpense) -> dedup/route -> human review
+ * -> write into Nathalie's master Matrice workbook.
+ *
+ * Golden rule (PRD H1): never invent a missing field. Missing/uncertain =>
+ * null + flagged for Nathalie. Nothing here fabricates data.
+ */
+
+// ---------------------------------------------------------------------------
+// Category <-> Matrice column mapping (PRD §7.4 + Excel appendix).
+// We write by COLUMN LETTER (not header text) to avoid the template's curly
+// apostrophe / embedded newline in the header cells.
+// ---------------------------------------------------------------------------
+
+export const CATEGORY_KEYS = [
+  "flight", // Billet d'avion       -> F
+  "hotel", // Hébergement           -> G
+  "train", // Train/Métro (train, metro, tram, bus) -> H
+  "taxi", // Taxi / VTC             -> I
+  "toll", // Autoroute (péage)      -> J
+  "parking", // Parking             -> K
+  "meals", // Repas et pourboires   -> L
+  "conference", // Conférences et séminaires -> M
+  "mileage", // Kilomètres          -> N (O = reimbursement formula)
+  "misc", // Divers                 -> P
+] as const;
+
+export type CategoryKey = (typeof CATEGORY_KEYS)[number];
+
+/** Category key -> { amount column letter, French label for the UI }. */
+export const CATEGORY_COLUMN: Record<CategoryKey, { col: string; label: string }> = {
+  flight: { col: "F", label: "Billet d'avion" },
+  hotel: { col: "G", label: "Hébergement" },
+  train: { col: "H", label: "Train / Métro" },
+  taxi: { col: "I", label: "Taxi" },
+  toll: { col: "J", label: "Autoroute" },
+  parking: { col: "K", label: "Parking" },
+  meals: { col: "L", label: "Repas et pourboires" },
+  conference: { col: "M", label: "Conférences et séminaires" },
+  mileage: { col: "N", label: "Kilomètres" },
+  misc: { col: "P", label: "Divers" },
+};
+
+// Fixed Matrice geometry (PRD Excel appendix, verified against the real file).
+export const MATRICE = {
+  templateSheet: "Matrice",
+  summarySheet: "Synthèse",
+  ledgerSheet: "_Ledger",
+  titleCell: "G2",
+  nameCell: "C5",
+  serviceCell: "C7",
+  periodCell: "C9",
+  reimbTotalCell: "Q7",
+  headerRow: 13,
+  firstDataRow: 14,
+  // amount columns summed by the Total formula (F..P, excludes Q TVA)
+  firstCategoryCol: "F",
+  lastCategoryCol: "P",
+  vatCol: "Q",
+  currencyCol: "R",
+  totalCol: "S",
+  mileageReimbCol: "O",
+  mileageCol: "N",
+  definedNameKm: "Kilométrage",
+} as const;
+
+export const DOC_NATURES = ["invoice", "receipt", "booking", "other"] as const;
+export type DocNature = (typeof DOC_NATURES)[number];
+
+// ---------------------------------------------------------------------------
+// Zod schema: what Claude must return per receipt (validated at the boundary).
+// Every value nullable so the model can honestly say "not present" (never guess).
+// ---------------------------------------------------------------------------
+
+const ConfidenceField = z.object({
+  value: z.union([z.string(), z.number()]).nullable(),
+  confidence: z.number().min(0).max(1),
+  /** true = read directly from the document; false = inferred/deduced. */
+  extracted: z.boolean(),
+});
+export type ConfidenceField = z.infer<typeof ConfidenceField>;
+
+export const ReceiptExtractionSchema = z.object({
+  /** Issue date of the receipt, ISO yyyy-mm-dd, or null if unreadable. */
+  issueDate: z.string().nullable(),
+  /** Issue date exactly as printed (for audit / ambiguity checks). */
+  issueDateRaw: z.string().nullable(),
+  /** Total actually PAID, TTC (never HT). null if unclear. */
+  amountTTC: z.number().nullable(),
+  /** ISO 4217 code of the amount actually paid (EUR, USD, JPY, DKK, AED...). */
+  currency: z.string().nullable(),
+  vendor: z.string().nullable(),
+  /** One of the fixed category keys, or null if it cannot be determined. */
+  category: z.enum(CATEGORY_KEYS).nullable(),
+  /** Recoverable VAT ONLY if explicitly itemized; else null (never computed). */
+  vatRecoverable: z.number().nullable(),
+  docNature: z.enum(DOC_NATURES).nullable(),
+  paymentProofPresent: z.boolean(),
+  /** Invoice / ticket / booking number — used for dedup. */
+  docNumber: z.string().nullable(),
+  location: z.string().nullable(),
+  /** Traveler name(s) if printed on the document. */
+  passengers: z.array(z.string()).default([]),
+  /** Purpose/motif if inferable from the doc (else from deposit message). */
+  purpose: z.string().nullable(),
+  /** Per-field confidence 0..1 for the key fields. */
+  confidence: z.object({
+    issueDate: z.number().min(0).max(1),
+    amountTTC: z.number().min(0).max(1),
+    currency: z.number().min(0).max(1),
+    vendor: z.number().min(0).max(1),
+    category: z.number().min(0).max(1),
+  }),
+  /** Model-raised flags (multi-passenger, several amounts, poor scan, etc.). */
+  alerts: z.array(z.string()).default([]),
+});
+export type ReceiptExtraction = z.infer<typeof ReceiptExtractionSchema>;
+
+/** A file may contain several receipts (PRD J1) -> the model returns a list. */
+export const FileExtractionSchema = z.object({
+  isReceipt: z.boolean(),
+  reasonIfNot: z.string().nullable().default(null),
+  receipts: z.array(ReceiptExtractionSchema).default([]),
+});
+export type FileExtraction = z.infer<typeof FileExtractionSchema>;
+
+// ---------------------------------------------------------------------------
+// Deposit context Nathalie provides with a batch (traveler + purpose + trip).
+// ---------------------------------------------------------------------------
+
+export interface DepositContext {
+  description: string; // free text
+  traveler?: string;
+  purpose?: string;
+  tripHint?: string; // e.g. "Venise", "Japon congrès"
+  period?: string; // e.g. "1er trimestre 2026"
+}
+
+// ---------------------------------------------------------------------------
+// FX result.
+// ---------------------------------------------------------------------------
+
+export interface FxResult {
+  /** EUR value of amountTTC. */
+  amountEUR: number;
+  /** original units per 1 EUR (e.g. 7.4688 DKK/EUR). */
+  rate: number;
+  rateDate: string; // actual quote date used (may be prior business day)
+  requestedDate: string; // the invoice issue date requested
+  source: string; // "ECB (Frankfurter)" | "CurrencyBeacon"
+  originalAmount: number;
+  originalCurrency: string;
+  /** true when rateDate != requestedDate (weekend/holiday fallback). */
+  dateAdjusted: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// A fully processed expense line, ready for review + Excel write.
+// ---------------------------------------------------------------------------
+
+export type TravelerSource = "extracted" | "deduced" | "unresolved";
+
+export interface ProcessedExpense {
+  id: string; // stable per-line id (docKey or file hash based)
+  sourceFile: string;
+  fileHash: string;
+
+  // extracted / normalized
+  issueDate: string | null; // ISO
+  issueDateLabel: string | null; // dd/mm/yyyy for the sheet
+  issueDateRaw: string | null;
+  vendor: string | null;
+  category: CategoryKey | null;
+  docNature: DocNature | null;
+  paymentProofPresent: boolean;
+  docNumber: string | null;
+  location: string | null;
+  purpose: string | null;
+  passengers: string[];
+
+  // amounts
+  originalAmount: number | null;
+  originalCurrency: string | null;
+  vatRecoverable: number | null;
+  amountEUR: number | null;
+  fx: FxResult | null;
+
+  // routing
+  traveler: string;
+  travelerSource: TravelerSource;
+  tripLabel: string; // human "Venise ↔ Strasbourg"
+  sheetName: string; // Excel sheet "Venise_0326"
+  period: string; // C9 value
+
+  // dedup / control
+  docKey: string;
+  duplicateOfId: string | null; // set when this is a duplicate within the batch (excluded)
+  idempotentSkip: boolean; // already present in the workbook _Ledger from a prior run
+  mergedFromIds: string[]; // booking + payment merged into this line
+  confidence: ReceiptExtraction["confidence"];
+  needsReview: boolean;
+  reviewReasons: string[];
+  alerts: string[];
+  /** true once written & validated (locked); never re-written. */
+  locked: boolean;
+}
+
+/** Result of the analyze step returned to the review UI. */
+export interface AnalyzeResult {
+  runId: string;
+  masterFileName: string;
+  expenses: ProcessedExpense[];
+  skipped: { file: string; reason: string }[];
+  groups: { sheetName: string; tripLabel: string; traveler: string; period: string; count: number; totalEUR: number }[];
+  alerts: string[];
+  grandTotalEUR: number;
+}

@@ -14,6 +14,7 @@ import {
   sanitizeSheetName,
   resolveSheetName,
   managedSheetNames,
+  flattenTables,
   type LedgerEntry,
   type SheetRow,
 } from "./excel";
@@ -201,6 +202,10 @@ export async function commitBatch(input: CommitInput): Promise<CommitResult> {
   const alerts = Array.from(new Set(expenses.flatMap((e) => (e.duplicateOfId || e.idempotentSkip ? [] : e.alerts))));
   rebuildSummary(wb, ledger, employeeName, alerts);
   writeLedger(wb, ledger);
+
+  // Convert all structured Table references to plain A1 and drop the tables so
+  // real Excel opens the file with no "repair" (ExcelJS mangles table XML).
+  flattenTables(wb);
 
   const buffer = await workbookToBuffer(wb);
   const grandTotalEUR = Number(ledger.reduce((s, e) => s + (e.row.amountEUR ?? 0), 0).toFixed(2));

@@ -218,6 +218,146 @@ function writeExpenseRow(ws: ExcelJS.Worksheet, row: number, exp: SheetRow) {
 }
 
 // ---------------------------------------------------------------------------
+// Flatten Excel Tables -> plain A1 formulas, then drop the table objects.
+//
+// ExcelJS re-serializes existing structured Tables in a way real Excel rejects
+// ("repair" removes table1.xml → every structured-reference formula becomes
+// #REF!). We avoid that entirely: convert each Dépenses[...] structured ref to
+// its A1 equivalent (the layout is fixed) and remove the tables. Data + formulas
+// keep working; only the blue table striping is dropped (the accepted demo had
+// no tables either). Must run right before writing the workbook.
+// ---------------------------------------------------------------------------
+
+function colToLetter(col: number): string {
+  let s = "";
+  while (col > 0) {
+    const m = (col - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    col = Math.floor((col - 1) / 26);
+  }
+  return s;
+}
+function letterToCol(letter: string): number {
+  let n = 0;
+  for (const ch of letter) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+function normName(s: string): string {
+  return String(s).replace(/_x000a_/gi, "").replace(/\s+/g, "").replace(/[’'`]/g, "'").toLowerCase();
+}
+
+interface TableSpec { name: string; M: Map<string, string>; D1: number; D2: number; TR: number | null }
+
+function convertInner(inner: string, s: TableSpec, r: number): string {
+  const subs = [...inner.matchAll(/\[([^[\]]*)\]/g)].map((m) => m[1]);
+  const Lof = (c: string) => s.M.get(normName(c)) || null;
+  if (subs.length === 0) {
+    const L = Lof(inner);
+    return L ? `${L}${s.D1}:${L}${s.D2}` : "#REF!";
+  }
+  let modifier: string | null = null;
+  const cols: string[] = [];
+  for (const t of subs) {
+    if (t.trim().startsWith("#")) modifier = t.replace(/\s+/g, "").toLowerCase();
+    else cols.push(t);
+  }
+  const hasRange = /]\s*:\s*\[/.test(inner);
+  let row: number | null = null;
+  if (modifier === "#thisrow" || modifier === "@") row = r;
+  else if (modifier === "#totals") row = s.TR;
+  if (cols.length === 1) {
+    const L = Lof(cols[0]);
+    if (!L) return "#REF!";
+    return row != null ? `${L}${row}` : `${L}${s.D1}:${L}${s.D2}`;
+  }
+  if (cols.length >= 2 && hasRange) {
+    const LA = Lof(cols[0]);
+    const LB = Lof(cols[cols.length - 1]);
+    if (!LA || !LB) return "#REF!";
+    return row != null ? `${LA}${row}:${LB}${row}` : `${LA}${s.D1}:${LB}${s.D2}`;
+  }
+  const L = cols[0] ? Lof(cols[0]) : null;
+  return L ? (row != null ? `${L}${row}` : `${L}${s.D1}:${L}${s.D2}`) : "#REF!";
+}
+
+function convertRefs(formula: string, s: TableSpec, r: number): string {
+  let out = "";
+  let i = 0;
+  while (i < formula.length) {
+    if (formula.startsWith(s.name, i) && formula[i + s.name.length] === "[") {
+      const prev = out[out.length - 1];
+      if (prev && /[A-Za-z0-9_.]/.test(prev)) { out += formula[i]; i++; continue; }
+      let j = i + s.name.length;
+      let depth = 0;
+      const start = j;
+      for (; j < formula.length; j++) {
+        if (formula[j] === "[") depth++;
+        else if (formula[j] === "]") { depth--; if (depth === 0) { j++; break; } }
+      }
+      const inner = formula.slice(start + 1, j - 1);
+      out += convertInner(inner, s, r);
+      i = j;
+    } else {
+      out += formula[i];
+      i++;
+    }
+  }
+  return out;
+}
+
+export function flattenTables(wb: ExcelJS.Workbook) {
+  wb.eachSheet((ws) => {
+    const wsTables = (ws as unknown as { tables?: Record<string, unknown> }).tables || {};
+    const tableModels = Object.values(wsTables).map(
+      (t) => ((t as unknown as { table?: unknown }).table ?? t) as {
+        name: string; tableRef?: string; ref?: string; totalsRow?: boolean;
+      },
+    );
+    if (tableModels.length === 0) return;
+
+    const specs: TableSpec[] = [];
+    for (const tm of tableModels) {
+      const ref = tm.tableRef || tm.ref;
+      if (!ref) continue;
+      const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(ref);
+      if (!m) continue;
+      const sc = letterToCol(m[1]);
+      const sr = parseInt(m[2], 10);
+      const ec = letterToCol(m[3]);
+      const er = parseInt(m[4], 10);
+      const totals = tm.totalsRow === true;
+      const M = new Map<string, string>();
+      for (let c = sc; c <= ec; c++) {
+        const name = ws.getCell(sr, c).text;
+        if (name) M.set(normName(name), colToLetter(c));
+      }
+      specs.push({ name: tm.name, M, D1: sr + 1, D2: totals ? er - 1 : er, TR: totals ? er : null });
+    }
+
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      const rn = row.number;
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        const v = cell.value as { formula?: string; result?: unknown } | null;
+        if (!v || typeof v !== "object" || typeof v.formula !== "string" || !v.formula.includes("[")) return;
+        let f = v.formula;
+        for (const s of specs) if (f.includes(s.name + "[")) f = convertRefs(f, s, rn);
+        if (f !== v.formula) cell.value = { formula: f, result: v.result } as ExcelJS.CellFormulaValue;
+      });
+    });
+
+    for (const tm of tableModels) {
+      const wsr = ws as unknown as { removeTable?: (n: string) => void; tables?: Record<string, unknown> };
+      try {
+        if (typeof wsr.removeTable === "function") wsr.removeTable(tm.name);
+        else if (wsr.tables) delete wsr.tables[tm.name];
+      } catch {
+        if (wsr.tables) delete wsr.tables[tm.name];
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // _Ledger (JSON rows) — idempotence / dedup / locking source of truth
 // ---------------------------------------------------------------------------
 

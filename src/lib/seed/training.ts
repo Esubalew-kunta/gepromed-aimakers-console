@@ -5,7 +5,7 @@ export const trainingModules: TrainingModule[] = [
     id: "t1",
     title: "Getting started with the Gepromed AI Console",
     description:
-      "A guided tour of skills, automations and the LMS handoff — everything a new user needs in one sitting.",
+      "A guided tour of skills, automations and the LMS handoff, everything a new user needs in one sitting.",
     format: "Guide",
     duration: "15 min",
     level: "Intro",
@@ -75,7 +75,7 @@ export const trainingModules: TrainingModule[] = [
     level: "Intro",
     audience: "All staff",
     lessons: [
-      "Personal & patient data — the golden rules",
+      "Personal & patient data, the golden rules",
       "Why outputs are drafts, not decisions",
       "Bias, hallucination and verification",
       "Escalation and sign-off",

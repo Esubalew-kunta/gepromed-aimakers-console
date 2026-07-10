@@ -10,6 +10,16 @@
  * parcours has its own ordered stage set, labels, tones and advance labels.
  */
 
+import {
+  type PipelineDef,
+  type VariantDef,
+  stageIdsFor,
+  stageLabelOf,
+  stageShortOf,
+  stageToneOf,
+  advanceLabelOf,
+} from "./pipeline/core";
+
 /* ------------------------------------------------------------------ *
  * Parcours discriminator
  * ------------------------------------------------------------------ */
@@ -91,7 +101,7 @@ export const BOOTCAMP_STAGES: readonly BootcampStage[] = [
  * ------------------------------------------------------------------ */
 
 const HELPMESEE_STAGE_LABEL: Record<HelpMeSeeStage, string> = {
-  lead: "Lead — à suivre",
+  lead: "Lead à suivre",
   enrollment_form: "Enrollment form à compléter",
   dates_validation: "Dates à valider",
   invoice: "Facture à payer",
@@ -102,7 +112,7 @@ const HELPMESEE_STAGE_LABEL: Record<HelpMeSeeStage, string> = {
 };
 
 const BOOTCAMP_STAGE_LABEL: Record<BootcampStage, string> = {
-  lead: "Lead — à suivre",
+  lead: "Lead à suivre",
   prerequisites: "Prérequis à vérifier",
   pre_registration: "Pré-inscription confirmée",
   deposit_contract: "Caution / contrat reçus",
@@ -185,7 +195,71 @@ const BOOTCAMP_ADVANCE_LABEL: Record<BootcampStage, string | null> = {
 };
 
 /* ------------------------------------------------------------------ *
- * Parcours-aware helpers (tolerate unknown/legacy stage ids gracefully)
+ * Trainee pipeline, registered through the shared pipeline core.
+ * The board + actions call the wrappers below (stable signatures); the
+ * per-stage data now lives in ONE PipelineDef built from the maps above,
+ * so Phase 5 can add explant/test/equipment pipelines the same way
+ * (Master Plan Decision 1). No labels are re-typed here — the existing
+ * maps feed the def, so behaviour is identical.
+ * ------------------------------------------------------------------ */
+
+function buildVariant<S extends string>(
+  key: Parcours,
+  label: string,
+  tone: string,
+  ids: readonly S[],
+  labels: Record<S, string>,
+  shorts: Record<S, string>,
+  tones: Record<S, string>,
+  advances: Record<S, string | null>,
+): VariantDef {
+  return {
+    key,
+    label,
+    tone,
+    stages: ids.map((id) => ({
+      id,
+      label: labels[id],
+      short: shorts[id],
+      tone: tones[id],
+      advanceLabel: advances[id] ?? null,
+    })),
+  };
+}
+
+/** The trainee pipeline (2 parcours) as a shared PipelineDef. */
+export const TRAINEE_PIPELINE: PipelineDef = {
+  kind: "trainee",
+  label: "Trainees management",
+  defaultVariantKey: DEFAULT_PARCOURS,
+  exitStatus: NOT_INTERESTED,
+  variants: [
+    buildVariant(
+      "helpmesee",
+      PARCOURS_LABEL.helpmesee,
+      PARCOURS_TONE.helpmesee,
+      HELPMESEE_STAGES,
+      HELPMESEE_STAGE_LABEL,
+      HELPMESEE_STAGE_SHORT,
+      HELPMESEE_STAGE_TONE,
+      HELPMESEE_ADVANCE_LABEL,
+    ),
+    buildVariant(
+      "bootcamp",
+      PARCOURS_LABEL.bootcamp,
+      PARCOURS_TONE.bootcamp,
+      BOOTCAMP_STAGES,
+      BOOTCAMP_STAGE_LABEL,
+      BOOTCAMP_STAGE_SHORT,
+      BOOTCAMP_STAGE_TONE,
+      BOOTCAMP_ADVANCE_LABEL,
+    ),
+  ],
+};
+
+/* ------------------------------------------------------------------ *
+ * Parcours-aware helpers — thin wrappers over the pipeline core
+ * (stable signatures; tolerate unknown/legacy stage ids gracefully).
  * ------------------------------------------------------------------ */
 
 /** Normalize a (possibly legacy / undefined) lead into a concrete parcours. */
@@ -195,31 +269,51 @@ export function normalizeParcours(lead: { parcours?: Parcours | null }): Parcour
 
 /** Ordered stage list for a parcours. */
 export function stagesFor(parcours: Parcours): readonly Stage[] {
-  return parcours === "helpmesee" ? HELPMESEE_STAGES : BOOTCAMP_STAGES;
+  return stageIdsFor(TRAINEE_PIPELINE, parcours) as Stage[];
 }
 
 /** FR label for a stage within a parcours (falls back to the raw id). */
 export function stageLabel(parcours: Parcours, stage: string): string {
-  const map = parcours === "helpmesee" ? HELPMESEE_STAGE_LABEL : BOOTCAMP_STAGE_LABEL;
-  return (map as Record<string, string>)[stage] ?? stage;
+  return stageLabelOf(TRAINEE_PIPELINE, parcours, stage);
 }
 
 /** Short cap for a stage within a parcours (stepper node). */
 export function stageShort(parcours: Parcours, stage: string): string {
-  const map = parcours === "helpmesee" ? HELPMESEE_STAGE_SHORT : BOOTCAMP_STAGE_SHORT;
-  return (map as Record<string, string>)[stage] ?? stage;
+  return stageShortOf(TRAINEE_PIPELINE, parcours, stage);
 }
 
 /** Badge tone classes for a stage within a parcours. */
 export function stageTone(parcours: Parcours, stage: string): string {
-  const map = parcours === "helpmesee" ? HELPMESEE_STAGE_TONE : BOOTCAMP_STAGE_TONE;
-  return (map as Record<string, string>)[stage] ?? "bg-ink-100 text-ink-600";
+  return stageToneOf(TRAINEE_PIPELINE, parcours, stage);
 }
 
 /** Advance-button label for a stage within a parcours (null = terminal). */
 export function advanceLabelFor(parcours: Parcours, stage: string): string | null {
-  const map = parcours === "helpmesee" ? HELPMESEE_ADVANCE_LABEL : BOOTCAMP_ADVANCE_LABEL;
-  return (map as Record<string, string | null>)[stage] ?? null;
+  return advanceLabelOf(TRAINEE_PIPELINE, parcours, stage);
+}
+
+/**
+ * Resolve the concrete next stage when staff advance a lead, applying the
+ * Bootcamp caution/refund rule (SOP §Bootcamp): from `confirmed`,
+ * `deposit_refunded` only applies when the caution was REQUIRED (not waived)
+ * AND the participant attended the full training; otherwise the caution is
+ * kept or was levée, so we skip straight to `done`. All other stages advance
+ * linearly. Returns null at a terminal stage. Used by BOTH the board (button
+ * label) and the server action (enforcement), so the rule can't be bypassed.
+ */
+export function resolveAdvance(
+  parcours: Parcours,
+  current: Stage,
+  flags: { attended?: boolean | null; cautionWaived?: boolean | null } = {},
+): Stage | null {
+  const stages = stagesFor(parcours);
+  const i = stages.indexOf(current);
+  if (i < 0 || i >= stages.length - 1) return null;
+  let next = stages[i + 1] as Stage;
+  if (parcours === "bootcamp" && current === "confirmed" && next === "deposit_refunded") {
+    if (flags.cautionWaived || !flags.attended) next = "done";
+  }
+  return next;
 }
 
 /* ------------------------------------------------------------------ *
@@ -238,7 +332,7 @@ export const LEAD_STAGES: LeadStage[] = [
 ];
 
 export const STAGE_LABEL: Record<LeadStage, string> = {
-  lead: "Lead — à suivre",
+  lead: "Lead à suivre",
   deposit_paid: "Acompte payé",
   contract_signed: "Contrat signé",
   confirmed: "Confirmé",
@@ -327,6 +421,13 @@ export interface Lead {
   reminders_active: boolean;
   sign_channel: "online" | "manual" | null;
 
+  // SOP business-rule fields (Phase 1 migration).
+  caution_waived: boolean;
+  attended: boolean | null;
+  attendance_confirmed_at: string | null;
+  elearning_completed: boolean;
+  year_of_residency: string | null;
+
   // Legacy single-pipeline timestamps (kept).
   deposit_paid_at: string | null;
   contract_signed_at: string | null;
@@ -363,6 +464,9 @@ export interface Lead {
     start_date: string;
     end_date: string;
     duration_days: number;
+    program_type?: string;
+    is_sponsored?: boolean;
+    sponsors?: { name: string; logo_url?: string }[];
   } | null;
   lead_comments: LeadComment[];
   documents: LeadDocument[];

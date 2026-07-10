@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ContractsPage() {
   const user = await getSessionUser();
-  if (user?.role !== "admin") redirect("/leads");
+  if (user?.role !== "admin") redirect("/trainees");
 
   const templates = await getContractTemplates();
 

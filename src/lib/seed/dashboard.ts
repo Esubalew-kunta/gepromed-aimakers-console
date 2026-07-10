@@ -58,8 +58,8 @@ export const activity: ActivityItem[] = [
   },
   {
     actor: "Camille Roussel",
-    action: "published",
-    target: "Micro-training → LMS (mock handoff)",
+    action: "generated",
+    target: "Programme Qualiopi : Bootcamp vasculaire",
     when: "Yesterday",
   },
   {
@@ -73,7 +73,7 @@ export const activity: ActivityItem[] = [
 export const quickStart = [
   {
     title: "Run the MDR Gap Analysis",
-    body: "See a regulatory skill produce a structured technical-file review in seconds — no API needed.",
+    body: "See a regulatory skill produce a structured technical-file review in seconds, no API needed.",
     href: "/skills/mdr-gap-analysis",
     cta: "Open skill",
   },
@@ -84,9 +84,24 @@ export const quickStart = [
     cta: "View automations",
   },
   {
-    title: "Try the LMS Handoff",
-    body: "Generate a micro-training and hand it off to a mock LMS in one click.",
-    href: "/lms",
-    cta: "Open LMS handoff",
+    title: "Track engineering requests",
+    body: "Follow explant analysis, testing and equipment rental requests through their pipelines.",
+    href: "/engineering",
+    cta: "Open engineering",
   },
+];
+
+export type EditorialItem = {
+  date: string;
+  channel: "LinkedIn" | "Blog" | "Newsletter" | "Congrès";
+  title: string;
+  status: "planned" | "draft" | "scheduled" | "published";
+};
+
+export const editorialCalendar: EditorialItem[] = [
+  { date: "2026-07-14", channel: "LinkedIn", title: "Retour sur le Bootcamp vasculaire de mars", status: "scheduled" },
+  { date: "2026-07-16", channel: "Blog", title: "Analyse d'explants : ce que révèlent 1 800 dispositifs", status: "draft" },
+  { date: "2026-07-21", channel: "Newsletter", title: "Programme des formations du 2e semestre", status: "planned" },
+  { date: "2026-07-24", channel: "LinkedIn", title: "Plateforme de tests : essais ISO 7198 en images", status: "planned" },
+  { date: "2026-09-03", channel: "Congrès", title: "ISVB 2026 : ouverture des inscriptions", status: "planned" },
 ];

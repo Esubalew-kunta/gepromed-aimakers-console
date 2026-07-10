@@ -75,7 +75,7 @@ export async function runSkillAction(
         output,
       });
     } catch {
-      // non-fatal — the run already succeeded
+      // non-fatal, the run already succeeded
     }
   }
 

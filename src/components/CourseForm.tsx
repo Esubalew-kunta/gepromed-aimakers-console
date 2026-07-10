@@ -98,7 +98,7 @@ export function CourseForm({ course }: { course?: Course }) {
         <BiField label="Venue" name="venue" fr={course?.venue.fr} en={course?.venue.en} />
         <Field
           label="Cover image"
-          hint="Shown on the course card. JPG or PNG. Optional — a specialty photo is used if left empty."
+          hint="Shown on the course card. JPG or PNG. Optional, a specialty photo is used if left empty."
         >
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -163,12 +163,12 @@ export function CourseForm({ course }: { course?: Course }) {
         ) : null}
       </section>
 
-      {/* Qualiopi — public training detail fields */}
+      {/* Qualiopi, public training detail fields */}
       <section className="card space-y-4 p-6">
         <div>
           <h2 className="text-sm font-semibold text-ink-900">Qualiopi</h2>
           <p className="text-xs text-ink-400">
-            Public visé, prérequis et méthodes — shown on the public training
+            Public visé, prérequis et méthodes, shown on the public training
             detail page.
           </p>
         </div>
@@ -349,7 +349,7 @@ export function CourseForm({ course }: { course?: Course }) {
                 onChange={(e) =>
                   setProgram((p) => p.map((x, i) => (i === di ? { ...x, day: { ...x.day, fr: e.target.value } } : x)))
                 }
-                placeholder="Jour 1 — Fondamentaux (FR)"
+                placeholder="Jour 1, Fondamentaux (FR)"
                 className="input font-medium"
               />
               <input
@@ -357,7 +357,7 @@ export function CourseForm({ course }: { course?: Course }) {
                 onChange={(e) =>
                   setProgram((p) => p.map((x, i) => (i === di ? { ...x, day: { ...x.day, en: e.target.value } } : x)))
                 }
-                placeholder="Day 1 — Fundamentals (EN)"
+                placeholder="Day 1, Fundamentals (EN)"
                 className="input font-medium"
               />
               <button

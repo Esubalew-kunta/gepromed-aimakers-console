@@ -16,6 +16,7 @@ import {
   stageShort,
   stageTone,
   advanceLabelFor,
+  resolveAdvance,
   normalizeParcours,
   INTEREST_LEVELS,
   INTEREST_LABEL,
@@ -31,7 +32,9 @@ import {
   verifyAndConfirm,
   getDocumentUrl,
   setLeadContractTemplate,
-} from "@/app/(app)/leads/actions";
+  setCautionWaived,
+  setAttended,
+} from "@/app/(app)/trainees/actions";
 import type { ContractTemplate } from "@/lib/contracts-shared";
 
 /** Which stage timestamp field on a Lead corresponds to each stage id. */
@@ -66,7 +69,7 @@ const fmtDay = (iso?: string | null) =>
 const euro = (n?: number) => "€" + (n ?? 0).toLocaleString("fr-FR");
 
 function fmtRange(a?: string, b?: string) {
-  if (!a) return "—";
+  if (!a) return "–";
   const s = new Date(a);
   const e = new Date(b || a);
   const o = { day: "numeric", month: "short" } as const;
@@ -218,7 +221,7 @@ export function LeadBoard({
     <div>
       {/* Toolbar */}
       <div className="card mb-4 p-4">
-        {/* Parcours split — HelpMeSee vs Bootcamps & Workshops */}
+        {/* Parcours split, HelpMeSee vs Bootcamps & Workshops */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wide text-ink-400">
             Parcours
@@ -417,13 +420,13 @@ export function LeadBoard({
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-[12.5px] text-ink-500">
-                  {l.profession || "—"}
+                  {l.profession || "–"}
                   {l.institution ? ` · ${l.institution}` : ""}
                 </p>
               </div>
               <div className="hidden min-w-0 sm:block">
                 <p className="truncate text-sm font-medium text-ink-700">
-                  {l.trainings?.title.fr ?? l.training_title_snapshot ?? "—"}
+                  {l.trainings?.title.fr ?? l.training_title_snapshot ?? "–"}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-ink-400">
                   {l.trainings?.city ?? ""}
@@ -514,6 +517,19 @@ function LeadDrawer({
   const last = stages.length - 1;
   const pct = idx <= 0 ? 0 : idx >= last ? 100 : (idx / last) * 100;
   const advance = advanceLabelFor(parcours, lead.stage);
+  // Bootcamp refund gate (SOP): the label + target depend on waiver/attendance.
+  const advanceTarget = resolveAdvance(parcours, lead.stage, {
+    attended: lead.attended,
+    cautionWaived: lead.caution_waived,
+  });
+  const isBootcampRefund = parcours === "bootcamp" && lead.stage === "confirmed";
+  const advanceText = isBootcampRefund
+    ? advanceTarget === "deposit_refunded"
+      ? "Caution remboursée"
+      : lead.caution_waived
+        ? "Marquer terminé"
+        : "Terminer, caution conservée"
+    : advance;
   const t = lead.trainings;
   const tsFor = (s: Stage) => {
     const f = STAGE_TS_FIELD[s];
@@ -555,7 +571,7 @@ function LeadDrawer({
         <p className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-1 text-[13px] text-ink-500">
           <span>{lead.email}</span>
           {lead.phone ? <span>· {lead.phone}</span> : null}
-          <span>· {lead.country || "—"}</span>
+          <span>· {lead.country || "–"}</span>
         </p>
         <p className="mt-1.5 font-mono text-[11px] text-ink-400">
           {lead.ref ?? lead.id.slice(0, 8)}
@@ -612,7 +628,7 @@ function LeadDrawer({
                 onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
                 className="btn-primary !py-2 !text-sm"
               >
-                {advance} →
+                {advanceText} →
               </button>
             ) : (
               <span className="badge bg-emerald-50 text-emerald-700">
@@ -653,6 +669,30 @@ function LeadDrawer({
               </button>
             ) : null}
           </div>
+
+          {/* Bootcamp SOP controls: caution waiver + attendance (gates the refund) */}
+          {parcours === "bootcamp" ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => run(() => setCautionWaived(lead.id, !lead.caution_waived))}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                  lead.caution_waived ? "bg-amber-50 text-amber-700" : "bg-ink-100 text-ink-500"
+                }`}
+                title="Exception inscrit tardif : caution 200€ / contrat levés"
+              >
+                {lead.caution_waived ? "Caution levée" : "Caution requise"}
+              </button>
+              <button
+                onClick={() => run(() => setAttended(lead.id, !lead.attended))}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                  lead.attended ? "bg-emerald-50 text-emerald-700" : "bg-ink-100 text-ink-500"
+                }`}
+                title="Formation suivie en intégralité (conditionne le remboursement de la caution)"
+              >
+                {lead.attended ? "Présent · formation suivie" : "Présence non confirmée"}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* Session & logistics */}
@@ -663,20 +703,30 @@ function LeadDrawer({
           <dl className="grid grid-cols-[104px_1fr] gap-x-3 gap-y-1.5 text-[13px]">
             <dt className="text-ink-400">Session</dt>
             <dd className="text-ink-700">
-              {t?.title.fr ?? lead.training_title_snapshot ?? "—"}
+              {t?.title.fr ?? lead.training_title_snapshot ?? "–"}
             </dd>
             <dt className="text-ink-400">When</dt>
             <dd className="text-ink-700">
-              {t ? `${fmtRange(t.start_date, t.end_date)} · ${t.city}` : "—"}
+              {t ? `${fmtRange(t.start_date, t.end_date)} · ${t.city}` : "–"}
             </dd>
             <dt className="text-ink-400">Price</dt>
             <dd className="text-ink-700">
-              {t ? `${euro(t.price_eur)} · deposit ${euro(t.deposit_eur)}` : "—"}
+              {t ? `${euro(t.price_eur)} · deposit ${euro(t.deposit_eur)}` : "–"}
+            </dd>
+            <dt className="text-ink-400">Comms</dt>
+            <dd className="text-ink-700">
+              {t?.is_sponsored
+                ? `Sponsorisé : ${
+                    (t.sponsors ?? []).map((s) => s.name).filter(Boolean).join(", ") || "labo(s)"
+                  }`
+                : t
+                  ? `Tarif participant : ${euro(t.price_eur)}`
+                  : "–"}
             </dd>
             <dt className="text-ink-400">Diet</dt>
-            <dd className="text-ink-700">{lead.dietary || "—"}</dd>
+            <dd className="text-ink-700">{lead.dietary || "–"}</dd>
             <dt className="text-ink-400">Arrival</dt>
-            <dd className="text-ink-700">{lead.arrival || "—"}</dd>
+            <dd className="text-ink-700">{lead.arrival || "–"}</dd>
             <dt className="text-ink-400">Extras</dt>
             <dd className="text-ink-700">
               Accommodation {lead.needs_accommodation ? "Yes" : "No"} · e-learning{" "}
@@ -723,7 +773,7 @@ function LeadDrawer({
                 onChange={(e) => run(() => setLeadContractTemplate(lead.id, e.target.value))}
                 className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs text-ink-700"
               >
-                <option value="">— none —</option>
+                <option value="">– none –</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -844,7 +894,7 @@ function DocState({ lead }: { lead: Lead }) {
     ? doc.verified
       ? { text: "Signé & vérifié. Place confirmée.", pill: "Verified", tone: "bg-emerald-50 text-emerald-700" }
       : {
-          text: `Chargé & signé (${doc.sign_channel ?? "manual"}) — en attente de vérification.`,
+          text: `Chargé & signé (${doc.sign_channel ?? "manual"}), en attente de vérification.`,
           pill: "Pending verification",
           tone: "bg-amber-50 text-amber-700",
         }

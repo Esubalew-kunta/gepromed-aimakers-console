@@ -12,7 +12,7 @@ import type { Lead } from "./leads-shared";
 export * from "./leads-shared";
 
 const BASE_SELECT =
-  "*, trainings(title,deposit_eur,price_eur,city,start_date,end_date,duration_days), lead_comments(id,author,body,created_at), documents(id,file_url,sign_channel,signed,verified,verified_at,created_at)";
+  "*, trainings(title,deposit_eur,price_eur,city,start_date,end_date,duration_days,program_type,is_sponsored,sponsors), lead_comments(id,author,body,created_at), documents(id,file_url,sign_channel,signed,verified,verified_at,created_at)";
 const FULL_SELECT = `${BASE_SELECT}, contract_template:contract_templates(id,name,file_url)`;
 
 /** All leads (newest first) with the joined training, comments, docs, contract. */

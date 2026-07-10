@@ -29,13 +29,13 @@ export default async function LeadsPage() {
     <>
       <PageHeader
         eyebrow="Training pipeline"
-        title="Lead management"
+        title="Trainees management"
         description="Two participant parcours, each with its own steps. HelpMeSee (foundation): lead → enrollment form → dates → facture → e-learning → accès simulateur → confirmé → terminé. Bootcamps & Workshops (Gepromed): lead → prérequis → pré-inscription → caution/contrat → infos pratiques → e-learning → confirmé → caution remboursée → terminé. Automates Nicole's manual, Excel-based follow-up."
       />
 
       {!configured ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Supabase isn&apos;t configured — set the keys in <code>.env.local</code> to load live leads.
+          Supabase isn&apos;t configured, set the keys in <code>.env.local</code> to load live leads.
         </div>
       ) : null}
 

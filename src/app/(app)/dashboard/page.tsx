@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { activity, metrics, quickStart } from "@/lib/seed/dashboard";
 import { getSkills } from "@/lib/skills-data";
 import { recentRuns } from "@/lib/store";
+import { EditorialCalendar } from "@/components/EditorialCalendar";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +140,10 @@ export default async function DashboardPage() {
             </ul>
           </div>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <EditorialCalendar />
       </div>
     </>
   );

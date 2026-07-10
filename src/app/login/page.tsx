@@ -42,7 +42,7 @@ export default async function LoginPage({
           </h1>
           <p className="mt-4 text-white/80">
             Regulatory gap analyses, clinical evidence summaries, CAPA drafts,
-            vigilance triage and automated post-market surveillance — all in one
+            vigilance triage and automated post-market surveillance, all in one
             secure console, with humans firmly in the loop.
           </p>
           <ul className="mt-6 space-y-2 text-sm text-white/80">

@@ -61,7 +61,7 @@ export default function InputsPage() {
       <PageHeader
         eyebrow="Inputs & access"
         title="Inputs & access"
-        description="What data feeds the AI Console and who can do what. In the demo, all data sources are mocked or provided per-run — no production data or client credentials are used."
+        description="What data feeds the AI Console and who can do what. In the demo, all data sources are mocked or provided per-run, no production data or client credentials are used."
       />
 
       {/* Data inputs */}
@@ -111,7 +111,7 @@ export default function InputsPage() {
                         className="mx-auto h-4 w-4 text-emerald-600"
                       />
                     ) : (
-                      <span className="text-ink-300">—</span>
+                      <span className="text-ink-300">–</span>
                     )}
                   </td>
                 ))}

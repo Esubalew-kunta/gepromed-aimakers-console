@@ -49,7 +49,7 @@ export function ExpenseUploader({
         Drag receipts in, or click to browse
       </p>
       <p className="mt-1 max-w-sm text-xs text-ink-400">
-        Invoices, tickets, hotel confirmations, taxi and meal receipts — drop as
+        Invoices, tickets, hotel confirmations, taxi and meal receipts, drop as
         many as you have for this batch.
       </p>
       <input

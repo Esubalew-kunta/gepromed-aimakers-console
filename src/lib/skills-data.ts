@@ -28,7 +28,7 @@ interface SkillRow {
 }
 
 const OFFLINE_FALLBACK = () =>
-  "_Offline preview unavailable for this skill — set ANTHROPIC_API_KEY for live output._";
+  "_Offline preview unavailable for this skill, set ANTHROPIC_API_KEY for live output._";
 
 function rowToSkill(row: SkillRow): Skill {
   const seed = getSeedSkill(row.key);

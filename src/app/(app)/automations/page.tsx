@@ -17,7 +17,7 @@ export default function AutomationsPage() {
       <PageHeader
         eyebrow="Automations"
         title="Automations & workflows"
-        description="Event-driven and scheduled workflows that run Gepromed's routine work. In this demo they execute as deterministic local simulations — no n8n webhook or external service is called."
+        description="Event-driven and scheduled workflows that run Gepromed's routine work. In this demo they execute as deterministic local simulations, no n8n webhook or external service is called."
       />
 
       <div className="space-y-5">

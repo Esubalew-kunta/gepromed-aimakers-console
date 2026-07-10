@@ -2,7 +2,7 @@ import type { Integration } from "@/lib/types";
 
 /**
  * Integrations shown with honest DEMO statuses. Nothing here calls a
- * real API — statuses are "Connected (mock)", "Manual", "Planned", or
+ * real API, statuses are "Connected (mock)", "Manual", "Planned", or
  * "Available" so the demo is transparent about what is simulated.
  */
 export const integrations: Integration[] = [
@@ -14,7 +14,7 @@ export const integrations: Integration[] = [
     status: "Manual",
     icon: "sparkles",
     detail:
-      "In this demo the console uses built-in offline templates (Gepromed demo models). Add OPENAI_API_KEY later to route skills to a live model — the app runs fully without it.",
+      "In this demo the console uses built-in offline templates (Gepromed demo models). Add OPENAI_API_KEY later to route skills to a live model, the app runs fully without it.",
   },
   {
     id: "gmail",
@@ -73,7 +73,7 @@ export const integrations: Integration[] = [
     status: "Available",
     icon: "database",
     detail:
-      "Demo keeps run history in memory (resets on restart). Attach a Render PostgreSQL and set DATABASE_URL to persist — see README.",
+      "Demo keeps run history in memory (resets on restart). Attach a Render PostgreSQL and set DATABASE_URL to persist, see README.",
   },
   {
     id: "slack",

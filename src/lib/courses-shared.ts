@@ -75,7 +75,7 @@ export function euro(n: number): string {
 }
 
 export function fmtRange(a?: string, b?: string): string {
-  if (!a) return "—";
+  if (!a) return "–";
   const s = new Date(a);
   const e = new Date(b || a);
   const o = { day: "numeric", month: "short" } as const;

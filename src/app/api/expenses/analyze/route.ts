@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
   if (!isExtractionConfigured()) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY non configurée — l'extraction IA est indisponible." },
+      { error: "ANTHROPIC_API_KEY non configurée, l'extraction IA est indisponible." },
       { status: 503 },
     );
   }

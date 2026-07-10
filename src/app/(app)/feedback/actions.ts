@@ -14,7 +14,7 @@ export async function submitFeedbackAction(
   formData: FormData,
 ): Promise<FeedbackState> {
   const user = await getSessionUser();
-  if (!user) return { error: "Session expired — please sign in again." };
+  if (!user) return { error: "Session expired, please sign in again." };
 
   const message = String(formData.get("message") || "").trim();
   const page = String(formData.get("page") || "General").trim();

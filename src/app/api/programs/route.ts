@@ -17,7 +17,7 @@ import * as XLSX from "xlsx";
  * session cookie, so it is safe to expose unauthenticated. The website's
  * "Download program PDF" button calls it cross-origin. HOWEVER the app's
  * middleware (src/middleware.ts) currently gates everything except a fixed
- * PUBLIC_PREFIXES list — a maintainer MUST add "/api/programs" to that list
+ * PUBLIC_PREFIXES list, a maintainer MUST add "/api/programs" to that list
  * (exactly like "/api/health") for anonymous callers to reach this route.
  * See SKILL.md → "Middleware note".
  */
@@ -106,7 +106,7 @@ const DEFAULT_ACCESSIBILITE =
   "GEPROMED s'engage à étudier toute situation de handicap afin d'envisager l'adaptation de la formation et des modalités d'accueil. Un référent handicap est à votre disposition pour analyser votre demande au cas par cas et déterminer les aménagements possibles. Contact référent handicap : [email / téléphone à confirmer].";
 const DEFAULT_SANCTION =
   "Attestation de fin de formation remise à chaque participant. Certificat de réalisation établi pour les actions concernées.";
-const PLACEHOLDER = "[À compléter — valider par le RQ]";
+const PLACEHOLDER = "[À compléter, valider par le RQ]";
 
 // --- Helpers -----------------------------------------------------------------
 function esc(s: unknown): string {
@@ -326,7 +326,7 @@ function slotCard(s: Slot): string {
   if (s.encadrants) meta.push(`<span class="meta"><b>Encadrant(s) :</b> ${esc(s.encadrants)}</span>`);
   if (s.type) meta.push(`<span class="tag ${kind}">${esc(s.type)}</span>`);
   if (evalue) meta.push(`<span class="tag evalue">Évalué</span>`);
-  return `<div class="slot ${kind}"><div class="slot-title">${esc(s.intitule || "—")}</div><div class="slot-meta">${meta.join(" ")}</div></div>`;
+  return `<div class="slot ${kind}"><div class="slot-title">${esc(s.intitule || "–")}</div><div class="slot-meta">${meta.join(" ")}</div></div>`;
 }
 
 function timeBlockHtml(b: TimeBlock): string {
@@ -345,7 +345,7 @@ function timeBlockHtml(b: TimeBlock): string {
 }
 
 function timetableHtml(timetable: Day[]): string {
-  if (!timetable.length) return '<p class="ph">[Planning à compléter — importer un fichier Excel]</p>';
+  if (!timetable.length) return '<p class="ph">[Planning à compléter, importer un fichier Excel]</p>';
   const out = ['<section class="block"><h2>Contenu / planning détaillé</h2>'];
   for (const day of timetable) {
     out.push(`<div class="day"><div class="day-head">${esc(day.jour)}</div>`);
@@ -425,9 +425,9 @@ function renderProgramHtml(metadataIn: Metadata, slots: Slot[]): string {
 
   return `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} — Programme de formation GEPROMED</title><style>${css()}</style></head>
+<title>${title}, Programme de formation GEPROMED</title><style>${css()}</style></head>
 <body>
-<div class="printbar"><span>Programme de formation GEPROMED — document prêt à imprimer</span><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
+<div class="printbar"><span>Programme de formation GEPROMED, document prêt à imprimer</span><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
 <div class="sheet">
 <header class="masthead"><div><div class="wordmark">GEPROMED</div><div class="brandline">The medical device hub for patient safety</div></div><div class="doc-tag">Programme de formation</div></header>
 <h1 class="title">${title}</h1>
@@ -435,7 +435,7 @@ function renderProgramHtml(metadataIn: Metadata, slots: Slot[]): string {
 ${blockHtml.join("")}
 ${timetableHtml(timetable)}
 <div class="compliance">${esc(compliance)}</div>
-<div class="footer">GEPROMED — organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485 &nbsp;|&nbsp; Document de travail — à valider par le Responsable Qualité avant diffusion</div>
+<div class="footer">GEPROMED, organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485 &nbsp;|&nbsp; Document de travail, à valider par le Responsable Qualité avant diffusion</div>
 </div></body></html>`;
 }
 
@@ -443,7 +443,7 @@ ${timetableHtml(timetable)}
 const DEMO_SESSIONS: Record<string, { metadata: Metadata; slots: Slot[] }> = {
   "bootcamp-vasculaire": {
     metadata: {
-      intitule: "Bootcamp Vasculaire — abord et anastomose sur simulateur",
+      intitule: "Bootcamp Vasculaire, abord et anastomose sur simulateur",
       reference: "GEP-FORM-VASC-01",
       version: "1.0",
       date: "2026-06-20",
@@ -459,7 +459,7 @@ const DEMO_SESSIONS: Record<string, { metadata: Metadata; slots: Slot[] }> = {
         "Appliquer les principes d'exposition et de préparation du champ opératoire.",
         "Évaluer la qualité d'une anastomose à l'aide d'une grille standardisée.",
       ],
-      duree: "2 jours — 14 heures (4 demi-journées).",
+      duree: "2 jours, 14 heures (4 demi-journées).",
       modalites_pedagogiques: [
         "Présentiel au René Kieny Education Center (Strasbourg).",
         "Formation par simulation : ateliers pratiques sur simulateurs vasculaires (dry-lab).",
@@ -481,22 +481,22 @@ const DEMO_SESSIONS: Record<string, { metadata: Metadata; slots: Slot[] }> = {
       inscription:
         "Inscription par formulaire en ligne ou par email auprès du référent pédagogique, jusqu'au [date limite].",
       contact:
-        "Référent pédagogique GEPROMED — René Kieny Education Center : [email / téléphone à confirmer].",
+        "Référent pédagogique GEPROMED, René Kieny Education Center : [email / téléphone à confirmer].",
     },
     slots: [
-      { jour: "Jour 1 — Lundi", debut: "09:00", fin: "10:30", intitule: "Accueil, rappels d'anatomie chirurgicale et principes d'abord", type: "Cours", groupe: "Tous", salle: "Amphi A", encadrants: "Dr. Martin", evalue: "Non" },
-      { jour: "Jour 1 — Lundi", debut: "10:45", fin: "12:30", intitule: "Atelier suture vasculaire — dry-lab", type: "Atelier pratique", groupe: "A", salle: "Sim-Lab 1", encadrants: "Dr. Martin", evalue: "Non" },
-      { jour: "Jour 1 — Lundi", debut: "10:45", fin: "12:30", intitule: "Atelier exposition du champ opératoire", type: "Atelier pratique", groupe: "B", salle: "Sim-Lab 2", encadrants: "Dr. Nguyen", evalue: "Non" },
-      { jour: "Jour 1 — Lundi", debut: "14:00", fin: "17:00", intitule: "Anastomoses termino-latérales — mise en situation", type: "Atelier pratique", groupe: "Tous", salle: "Sim-Lab 1+2", encadrants: "Équipe formatrice", evalue: "Non" },
-      { jour: "Jour 2 — Mardi", debut: "09:00", fin: "12:00", intitule: "Débriefing individualisé et perfectionnement du geste", type: "Atelier pratique", groupe: "A", salle: "Sim-Lab 1", encadrants: "Dr. Martin", evalue: "Non" },
-      { jour: "Jour 2 — Mardi", debut: "09:00", fin: "12:00", intitule: "Débriefing individualisé et perfectionnement du geste", type: "Atelier pratique", groupe: "B", salle: "Sim-Lab 2", encadrants: "Dr. Nguyen", evalue: "Non" },
-      { jour: "Jour 2 — Mardi", debut: "13:30", fin: "16:00", intitule: "Évaluation pratique sur grille et synthèse des axes de progression", type: "Cours", groupe: "Tous", salle: "Amphi A", encadrants: "Équipe formatrice", evalue: "Oui" },
+      { jour: "Jour 1, Lundi", debut: "09:00", fin: "10:30", intitule: "Accueil, rappels d'anatomie chirurgicale et principes d'abord", type: "Cours", groupe: "Tous", salle: "Amphi A", encadrants: "Dr. Martin", evalue: "Non" },
+      { jour: "Jour 1, Lundi", debut: "10:45", fin: "12:30", intitule: "Atelier suture vasculaire, dry-lab", type: "Atelier pratique", groupe: "A", salle: "Sim-Lab 1", encadrants: "Dr. Martin", evalue: "Non" },
+      { jour: "Jour 1, Lundi", debut: "10:45", fin: "12:30", intitule: "Atelier exposition du champ opératoire", type: "Atelier pratique", groupe: "B", salle: "Sim-Lab 2", encadrants: "Dr. Nguyen", evalue: "Non" },
+      { jour: "Jour 1, Lundi", debut: "14:00", fin: "17:00", intitule: "Anastomoses termino-latérales, mise en situation", type: "Atelier pratique", groupe: "Tous", salle: "Sim-Lab 1+2", encadrants: "Équipe formatrice", evalue: "Non" },
+      { jour: "Jour 2, Mardi", debut: "09:00", fin: "12:00", intitule: "Débriefing individualisé et perfectionnement du geste", type: "Atelier pratique", groupe: "A", salle: "Sim-Lab 1", encadrants: "Dr. Martin", evalue: "Non" },
+      { jour: "Jour 2, Mardi", debut: "09:00", fin: "12:00", intitule: "Débriefing individualisé et perfectionnement du geste", type: "Atelier pratique", groupe: "B", salle: "Sim-Lab 2", encadrants: "Dr. Nguyen", evalue: "Non" },
+      { jour: "Jour 2, Mardi", debut: "13:30", fin: "16:00", intitule: "Évaluation pratique sur grille et synthèse des axes de progression", type: "Cours", groupe: "Tous", salle: "Amphi A", encadrants: "Équipe formatrice", evalue: "Oui" },
     ],
   },
 };
 
 function errorHtml(message: string, status: number): NextResponse {
-  const body = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Erreur — Programme GEPROMED</title>
+  const body = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Erreur, Programme GEPROMED</title>
 <style>body{font-family:"Segoe UI",Arial,sans-serif;color:${DARK};background:#f4f6f8;padding:40px;}
 .box{max-width:520px;margin:40px auto;background:#fff;border-top:4px solid ${ORANGE};border-radius:6px;padding:28px 32px;box-shadow:0 1px 6px rgba(10,37,64,.12);}
 h1{color:${NAVY};font-size:16pt;margin:0 0 8px;}p{color:${MUTED};}</style></head>

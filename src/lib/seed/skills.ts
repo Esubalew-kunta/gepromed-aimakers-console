@@ -2,7 +2,7 @@ import type { Skill } from "@/lib/types";
 
 /**
  * Gepromed-specific AI skills. Every `demo()` is a deterministic,
- * offline template — NO OpenAI or external API is ever called. This is
+ * offline template, NO OpenAI or external API is ever called. This is
  * what makes the skill catalog fully demoable straight from a Render URL.
  */
 export const skills: Skill[] = [
@@ -27,7 +27,7 @@ export const skills: Skill[] = [
         label: "Device name & class",
         type: "text",
         placeholder: "e.g. Class IIa wound-care dressing",
-        sample: "NeoDerm Advanced Wound Dressing — Class IIa",
+        sample: "NeoDerm Advanced Wound Dressing, Class IIa",
       },
       {
         name: "documentation",
@@ -41,7 +41,7 @@ export const skills: Skill[] = [
     demo: (v) => {
       const device = v.device || "the submitted device";
       return [
-        `## MDR Technical File Gap Analysis — ${device}`,
+        `## MDR Technical File Gap Analysis, ${device}`,
         "",
         "**Scope:** EU MDR 2017/745, Annex II (Technical Documentation) & Annex III (PMS).",
         "",
@@ -51,10 +51,10 @@ export const skills: Skill[] = [
         "- Biocompatibility evaluation summary",
         "",
         "### ⚠️ Gaps requiring action",
-        "1. **Clinical Evaluation Report (CER) missing** — a plan exists but no MDR-compliant CER per MEDDEV 2.7/1 rev 4. *Priority: High.*",
-        "2. **Post-Market Surveillance (PMS) plan incomplete** — Annex III PMS plan and PMCF plan not evidenced.",
-        "3. **Labelling** — drafts present but no verification against Annex I Ch. III symbols (ISO 15223-1). *Priority: Medium.*",
-        "4. **GSPR checklist** — no explicit Annex I General Safety & Performance Requirements matrix mapping evidence to each requirement.",
+        "1. **Clinical Evaluation Report (CER) missing**, a plan exists but no MDR-compliant CER per MEDDEV 2.7/1 rev 4. *Priority: High.*",
+        "2. **Post-Market Surveillance (PMS) plan incomplete**, Annex III PMS plan and PMCF plan not evidenced.",
+        "3. **Labelling**, drafts present but no verification against Annex I Ch. III symbols (ISO 15223-1). *Priority: Medium.*",
+        "4. **GSPR checklist**, no explicit Annex I General Safety & Performance Requirements matrix mapping evidence to each requirement.",
         "",
         "### Recommended next steps",
         "- Commission the CER using existing clinical literature + equivalence rationale.",
@@ -99,7 +99,7 @@ export const skills: Skill[] = [
     demo: (v) => {
       const device = v.device || "the device";
       return [
-        `## Clinical Evidence Summary — ${device}`,
+        `## Clinical Evidence Summary, ${device}`,
         "",
         "### Evidence base",
         "- 3 sources appraised (2 RCTs, 1 registry). Total pooled N ≈ 1,705.",
@@ -110,7 +110,7 @@ export const skills: Skill[] = [
         "| --- | --- | --- |",
         "| Efficacy (MACE) | Non-inferior to comparator at 12 months | Moderate |",
         "| Late lumen loss | Numerically higher, clinically monitored | Moderate |",
-        "| Safety (thrombosis) | 1.8% at 24 months — within expected range | Moderate |",
+        "| Safety (thrombosis) | 1.8% at 24 months, within expected range | Moderate |",
         "",
         "### Benefit–risk narrative",
         "Current evidence supports a **favourable benefit–risk profile** under the stated intended use, contingent on adherence to the implantation technique IFU. Residual uncertainty around long-term lumen loss should be addressed through **PMCF**.",
@@ -150,7 +150,7 @@ export const skills: Skill[] = [
     ],
     demo: () =>
       [
-        "## CAPA-2026-0142 — Draft",
+        "## CAPA-2026-0142, Draft",
         "",
         "**Source:** Field complaint cluster · **Standard:** ISO 13485:2016 §8.5.2 / §8.5.3",
         "",
@@ -193,7 +193,7 @@ export const skills: Skill[] = [
     runsThisMonth: 17,
     avgMinutesSaved: 120,
     systemPrompt:
-      "You are a grant-writing specialist for medical-device innovation at Gepromed. Given a project idea and a target funding call/programme (e.g. Horizon Europe), draft a compelling proposal section. Output GitHub-flavored Markdown structured as Excellence, Impact (clinical, economic, societal — with plausible quantified estimates), Implementation (work packages & timeline), and Consortium fit (Gepromed's regulatory/clinical role). Be persuasive but credible and grounded. End with a one-line note that this is an editable draft for grant writers.",
+      "You are a grant-writing specialist for medical-device innovation at Gepromed. Given a project idea and a target funding call/programme (e.g. Horizon Europe), draft a compelling proposal section. Output GitHub-flavored Markdown structured as Excellence, Impact (clinical, economic, societal, with plausible quantified estimates), Implementation (work packages & timeline), and Consortium fit (Gepromed's regulatory/clinical role). Be persuasive but credible and grounded. End with a one-line note that this is an editable draft for grant writers.",
     inputs: [
       {
         name: "project",
@@ -207,13 +207,13 @@ export const skills: Skill[] = [
         name: "call",
         label: "Target call / programme",
         type: "text",
-        sample: "Horizon Europe — Cluster 1 Health, digital & data-driven care",
+        sample: "Horizon Europe, Cluster 1 Health, digital & data-driven care",
       },
     ],
     demo: (v) => {
       const call = v.call || "the targeted programme";
       return [
-        `## Proposal draft — Impact section (for ${call})`,
+        `## Proposal draft, Impact section (for ${call})`,
         "",
         "### Excellence",
         "The project advances the state of the art by combining a low-cost wearable sensing patch with an explainable AI model for early surgical-site-infection (SSI) detection, addressing a well-documented gap in post-discharge monitoring.",
@@ -260,12 +260,12 @@ export const skills: Skill[] = [
     ],
     demo: () =>
       [
-        "## Vigilance Triage — Result",
+        "## Vigilance Triage, Result",
         "",
         "### Classification",
         "- **Event type:** Device malfunction (alarm latency).",
         "- **Harm:** None reported (near-miss).",
-        "- **Reportability (EU MDR Art. 87):** *Potentially reportable* — malfunction that, were it to recur, **might lead to** serious deterioration in health. Recommend serious-incident assessment.",
+        "- **Reportability (EU MDR Art. 87):** *Potentially reportable*, malfunction that, were it to recur, **might lead to** serious deterioration in health. Recommend serious-incident assessment.",
         "",
         "### Recommended action",
         "- Log in complaint-handling system within 24h.",
@@ -313,7 +313,7 @@ export const skills: Skill[] = [
         "",
         "**Please remember:**",
         "- Take both medicines every day, exactly as your doctor tells you.",
-        "- Don't stop them on your own — even if you feel fine.",
+        "- Don't stop them on your own, even if you feel fine.",
         "- If you have any bleeding that won't stop, contact your care team.",
         "",
         "_Demo output generated offline. Review with a clinician before patient use._",
@@ -410,10 +410,10 @@ export const skills: Skill[] = [
         "3. Route the complaint to QA within the required timeframe.",
         "",
         "### Script (excerpt)",
-        "> Every complaint is a signal. When a customer reports a problem, your job isn't to solve the device issue — it's to capture it accurately and fast. Record who, what, when, the lot number, and whether anyone was harmed…",
+        "> Every complaint is a signal. When a customer reports a problem, your job isn't to solve the device issue, it's to capture it accurately and fast. Record who, what, when, the lot number, and whether anyone was harmed…",
         "",
         "### Quick quiz",
-        "1. A customer says a dressing 'felt different' but works fine. Is this a complaint? *(Yes — log it; trends matter.)*",
+        "1. A customer says a dressing 'felt different' but works fine. Is this a complaint? *(Yes, log it; trends matter.)*",
         "2. Which field is mandatory for traceability? *(Lot/batch number.)*",
         "3. What's the first question if harm is possible? *(Was anyone injured? → escalate immediately.)*",
         "",
@@ -425,7 +425,7 @@ export const skills: Skill[] = [
     id: "qualiopi-program",
     name: "Générateur de programme Qualiopi",
     summary:
-      "Builds a branded, print-ready GEPROMED training program (programme de formation Qualiopi) from an Excel schedule + fiche metadata — renders parallel sub-group columns and every RNQ block as HTML you can Print → Save as PDF.",
+      "Builds a branded, print-ready GEPROMED training program (programme de formation Qualiopi) from an Excel schedule + fiche metadata, renders parallel sub-group columns and every RNQ block as HTML you can Print → Save as PDF.",
     category: "Training & Enablement",
     icon: "graduation-cap",
     tags: ["Qualiopi", "Formation", "PDF"],
@@ -435,11 +435,11 @@ export const skills: Skill[] = [
     runsThisMonth: 12,
     avgMinutesSaved: 120,
     systemPrompt:
-      "You are the GEPROMED Qualiopi program generator. Given an Excel schedule (Planning sheet — one row per créneau: Jour, Heure début, Heure fin, Intitulé, Type, Groupe, Salle, Encadrant(s), Évalué) plus Qualiopi fiche metadata, produce a complete, brand-styled programme de formation covering every Référentiel National Qualité block. Concurrent rows (same day+time, different Groupe) render as parallel columns. Never invent prices, dates, or rates — bracket unknowns for the Responsable Qualité, who validates before publication.",
+      "You are the GEPROMED Qualiopi program generator. Given an Excel schedule (Planning sheet, one row per créneau: Jour, Heure début, Heure fin, Intitulé, Type, Groupe, Salle, Encadrant(s), Évalué) plus Qualiopi fiche metadata, produce a complete, brand-styled programme de formation covering every Référentiel National Qualité block. Concurrent rows (same day+time, different Groupe) render as parallel columns. Never invent prices, dates, or rates, bracket unknowns for the Responsable Qualité, who validates before publication.",
     inputs: [
       {
         name: "schedule",
-        label: "Planning Excel (.xlsx) — one row per créneau",
+        label: "Planning Excel (.xlsx), one row per créneau",
         type: "textarea",
         placeholder:
           "Colonnes : Jour | Heure début | Heure fin | Intitulé du créneau | Type | Groupe | Salle | Encadrant(s) | Évalué",
@@ -452,7 +452,7 @@ export const skills: Skill[] = [
         type: "textarea",
         placeholder: "Intitulé, public visé, prérequis, objectifs, durée, modalités, évaluation, tarifs, inscription…",
         sample:
-          "Intitulé : Bootcamp Vasculaire — abord et anastomose sur simulateur\nPublic visé : chirurgiens et internes en chirurgie vasculaire\nDurée : 2 jours — 14 heures",
+          "Intitulé : Bootcamp Vasculaire, abord et anastomose sur simulateur\nPublic visé : chirurgiens et internes en chirurgie vasculaire\nDurée : 2 jours, 14 heures",
       },
     ],
     demo: (v) => {
@@ -460,7 +460,7 @@ export const skills: Skill[] = [
       const title =
         (fiche.match(/Intitul[ée]\s*:\s*(.+)/i)?.[1] || "Programme de formation").trim();
       return [
-        `## Programme de formation Qualiopi — ${title}`,
+        `## Programme de formation Qualiopi, ${title}`,
         "**Format :** HTML prêt à imprimer (Print → Save as PDF) · charte GEPROMED (navy #007AC2 / #0A2540, accent orange #ED6D1B).",
         "",
         "### Blocs RNQ rendus",
@@ -475,7 +475,7 @@ export const skills: Skill[] = [
         "",
         "_Les créneaux simultanés (même jour + horaire, groupes A/B) sont rendus en **colonnes parallèles**. Créneau « Tous » = pleine largeur._",
         "",
-        "> Valeurs entre crochets à confirmer par le Responsable Qualité avant diffusion. Document de travail — GEPROMED valide avant publication.",
+        "> Valeurs entre crochets à confirmer par le Responsable Qualité avant diffusion. Document de travail, GEPROMED valide avant publication.",
         "",
         "_Demo output generated offline. Live route: `GET /api/programs?session=bootcamp-vasculaire` or `POST /api/programs` with an .xlsx._",
       ].join("\n");

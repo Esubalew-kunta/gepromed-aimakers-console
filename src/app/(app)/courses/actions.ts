@@ -68,7 +68,7 @@ export async function saveCourse(
     image_url = sb.storage.from("course-images").getPublicUrl(path).data.publicUrl;
   }
 
-  // Optional bilingual { fr, en } block — only include when at least one side
+  // Optional bilingual { fr, en } block, only include when at least one side
   // has content, so saves keep working before db/course_qualiopi_fields.sql runs.
   const bi = (k: string): { fr: string; en: string } | undefined => {
     const fr = str(fd, `${k}_fr`);
@@ -122,7 +122,7 @@ export async function saveCourse(
     status: str(fd, "status") || "open",
   };
 
-  // Only write image_url when we actually have one — so course saves keep
+  // Only write image_url when we actually have one, so course saves keep
   // working even before db/course_images.sql adds the column. Same guard applies
   // to the Qualiopi extras (db/course_qualiopi_fields.sql): only sent when set.
   const payload = {

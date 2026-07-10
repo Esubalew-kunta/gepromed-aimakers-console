@@ -16,7 +16,7 @@ export default function NewCoursePage() {
       <PageHeader
         eyebrow="Course management"
         title="New course"
-        description="Fill in both French and English — the public website switches language with the toggle. Saved to the shared catalog."
+        description="Fill in both French and English, the public website switches language with the toggle. Saved to the shared catalog."
       />
       <CourseForm />
     </>

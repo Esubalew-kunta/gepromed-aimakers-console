@@ -74,7 +74,7 @@ export function LoginForm({
 
       <div className="mt-6 rounded-xl border border-dashed border-ink-200 bg-ink-50 p-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-          Demo credentials — click to fill
+          Demo credentials, click to fill
         </p>
         <div className="space-y-1.5">
           {creds.map((c) => (

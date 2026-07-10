@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Gepromed AI Console",
   description:
-    "Gepromed AI Console — an AI Makers demo. AI skills, automations and enablement for medical-device teams.",
+    "Gepromed AI Console, an AI Makers demo. AI skills, automations and enablement for medical-device teams.",
   robots: { index: false, follow: false },
 };
 

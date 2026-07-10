@@ -29,7 +29,7 @@ export function LmsHandoff() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      {/* Step 1 — generate */}
+      {/* Step 1, generate */}
       <div className="card p-5">
         <div className="mb-4 flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
@@ -93,7 +93,7 @@ export function LmsHandoff() {
         ) : null}
       </div>
 
-      {/* Step 2 — publish */}
+      {/* Step 2, publish */}
       <div className="card p-5">
         <div className="mb-4 flex items-center gap-2">
           <span
@@ -119,7 +119,7 @@ export function LmsHandoff() {
           <>
             <p className="text-sm text-ink-500">
               This builds the exact enrolment payload that would be sent to your
-              LMS. In the demo, nothing is sent — set{" "}
+              LMS. In the demo, nothing is sent, set{" "}
               <code className="rounded bg-ink-100 px-1 py-0.5 text-xs">
                 LMS_API_URL
               </code>{" "}

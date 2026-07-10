@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 /**
  * Health check for Render (healthCheckPath: /api/health).
  * Reports demo-mode status and which optional integrations are configured
- * — without ever leaking secret values.
+ *, without ever leaking secret values.
  */
 export async function GET() {
   const optional = {

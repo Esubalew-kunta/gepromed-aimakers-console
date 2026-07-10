@@ -14,7 +14,7 @@ import {
 type Phase = "setup" | "analyzing" | "review" | "committing" | "done";
 
 const eur = (n: number | null | undefined) =>
-  n == null ? "—" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
+  n == null ? "–" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
 
 export function ExpenseRunner() {
   const [phase, setPhase] = useState<Phase>("setup");
@@ -123,7 +123,7 @@ export function ExpenseRunner() {
     <div className="space-y-6">
       {!extractionReady && (
         <Banner tone="amber">
-          L&apos;extraction IA (ANTHROPIC_API_KEY) n&apos;est pas configurée sur ce serveur — l&apos;analyse ne
+          L&apos;extraction IA (ANTHROPIC_API_KEY) n&apos;est pas configurée sur ce serveur, l&apos;analyse ne
           fonctionnera pas tant que la clé n&apos;est pas ajoutée.
         </Banner>
       )}
@@ -262,13 +262,13 @@ function SetupCard(props: {
       <div>
         <div className="text-sm font-semibold text-ink-900">3 · Contexte du dépôt</div>
         <p className="mt-0.5 text-xs text-ink-400">
-          Décrivez le lot (voyageur + objet) — sert à renseigner le voyageur/l&apos;objet quand ils sont absents des justificatifs. L&apos;IA n&apos;invente rien d&apos;autre.
+          Décrivez le lot (voyageur + objet), sert à renseigner le voyageur/l&apos;objet quand ils sont absents des justificatifs. L&apos;IA n&apos;invente rien d&apos;autre.
         </p>
         <textarea
           value={p.description}
           onChange={(e) => p.setDescription(e.target.value)}
           rows={2}
-          placeholder="Ex : Frais de Cristina Rocchi — déplacement Venise ↔ Strasbourg, mars 2026."
+          placeholder="Ex : Frais de Cristina Rocchi, déplacement Venise ↔ Strasbourg, mars 2026."
           className="mt-2 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm"
         />
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -373,23 +373,23 @@ function ReviewTable({
                     className="w-24 rounded border border-ink-200 px-1.5 py-1"
                   />
                 </td>
-                <td className="px-2.5 py-2 text-ink-700">{e.vendor || "—"}</td>
+                <td className="px-2.5 py-2 text-ink-700">{e.vendor || "–"}</td>
                 <td className="px-2.5 py-2">
                   <select
                     value={e.category ?? ""}
                     onChange={(ev) => onPatch(e.id, { category: (ev.target.value || null) as CategoryKey | null })}
                     className="rounded border border-ink-200 px-1.5 py-1"
                   >
-                    <option value="">— à choisir —</option>
+                    <option value="">– à choisir –</option>
                     {CATEGORY_KEYS.map((k) => (
                       <option key={k} value={k}>{CATEGORY_COLUMN[k].label}</option>
                     ))}
                   </select>
                 </td>
                 <td className="px-2.5 py-2 text-ink-600">
-                  {e.originalAmount != null ? `${e.originalAmount} ${e.originalCurrency || ""}` : "—"}
+                  {e.originalAmount != null ? `${e.originalAmount} ${e.originalCurrency || ""}` : "–"}
                   {e.fx && (
-                    <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR — ${e.fx.source} ${e.fx.rateDate}`}>
+                    <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR, ${e.fx.source} ${e.fx.rateDate}`}>
                       @ {e.fx.rate} ({e.fx.source})
                     </div>
                   )}
@@ -447,10 +447,10 @@ function ReviewTable({
             {excluded.map((e) => (
               <tr key={e.id} className="bg-ink-50/60 text-ink-400">
                 <td className="px-2.5 py-2">{e.sourceFile}</td>
-                <td className="px-2.5 py-2">{e.issueDateLabel || "—"}</td>
-                <td className="px-2.5 py-2">{e.vendor || "—"}</td>
+                <td className="px-2.5 py-2">{e.issueDateLabel || "–"}</td>
+                <td className="px-2.5 py-2">{e.vendor || "–"}</td>
                 <td className="px-2.5 py-2" colSpan={7}>
-                  {e.duplicateOfId ? "Doublon — compté une seule fois" : "Déjà traité lors d'un run précédent"}
+                  {e.duplicateOfId ? "Doublon, compté une seule fois" : "Déjà traité lors d'un run précédent"}
                 </td>
                 <td className="px-2.5 py-2">
                   <span className="inline-block rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-600">ignoré</span>
@@ -486,7 +486,7 @@ function DoneCard({ name, total, onReset }: { name: string | null; total: number
       <div>
         <div className="text-sm font-semibold text-emerald-900">Fichier généré et téléchargé</div>
         <p className="mt-1 text-xs text-emerald-700">
-          {name} · total cumulé {eur(total)}. Ouvrez-le, vérifiez, corrigez si besoin — les lignes validées sont verrouillées au prochain run.
+          {name} · total cumulé {eur(total)}. Ouvrez-le, vérifiez, corrigez si besoin, les lignes validées sont verrouillées au prochain run.
         </p>
       </div>
       <button onClick={onReset} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">

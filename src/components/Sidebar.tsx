@@ -7,13 +7,13 @@ import { Icon } from "./Icon";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "home" },
-  { href: "/leads", label: "Lead management", icon: "users" },
+  { href: "/trainees", label: "Trainees management", icon: "users" },
   { href: "/courses", label: "Course management", icon: "book" },
+  { href: "/engineering", label: "Engineering", icon: "workflow" },
   { href: "/contracts", label: "Contract templates", icon: "clipboard-check" },
   { href: "/skills", label: "Skills catalog", icon: "grid" },
   { href: "/automations", label: "Automations", icon: "bolt" },
   { href: "/expenses", label: "Expense reports", icon: "clipboard-check" },
-  { href: "/lms", label: "LMS handoff", icon: "graduation-cap" },
   { href: "/integrations", label: "Integrations", icon: "plug" },
   { href: "/roadmap", label: "Roadmap", icon: "map" },
   { href: "/inputs", label: "Inputs & access", icon: "key" },

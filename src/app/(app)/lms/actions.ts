@@ -17,7 +17,7 @@ export async function generateModuleAction(
   formData: FormData,
 ): Promise<LmsState> {
   const user = await getSessionUser();
-  if (!user) return { error: "Session expired — please sign in again." };
+  if (!user) return { error: "Session expired, please sign in again." };
 
   const topic = String(formData.get("topic") || "").trim();
   const audience = String(formData.get("audience") || "All staff").trim();
@@ -31,14 +31,14 @@ export async function generateModuleAction(
 
 /**
  * "Publish" to the LMS. In the demo this builds the exact payload that
- * WOULD be sent and returns a mock course id — no LMS_API call is made.
+ * WOULD be sent and returns a mock course id, no LMS_API call is made.
  */
 export async function publishToLmsAction(
   _prev: LmsState,
   formData: FormData,
 ): Promise<LmsState> {
   const user = await getSessionUser();
-  if (!user) return { error: "Session expired — please sign in again." };
+  if (!user) return { error: "Session expired, please sign in again." };
 
   const topic = String(formData.get("topic") || "Untitled module").trim();
   const audience = String(formData.get("audience") || "All staff").trim();
@@ -50,7 +50,7 @@ export async function publishToLmsAction(
     {
       endpoint: (process.env.LMS_API_URL || "https://lms.example/api/v1") + "/courses",
       method: "POST",
-      auth: lmsConfigured ? "Bearer ****" : "(mock — no LMS_API_KEY set)",
+      auth: lmsConfigured ? "Bearer ****" : "(mock, no LMS_API_KEY set)",
       body: {
         title: topic,
         audience,

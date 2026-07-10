@@ -24,7 +24,7 @@ export default function TrainingPage() {
       <PageHeader
         eyebrow="Training hub"
         title="Training hub"
-        description="Learn to get the most out of the AI Console — safely and effectively. Content is seeded for the demo; publish your own via the LMS handoff."
+        description="Learn to get the most out of the AI Console, safely and effectively. Content is seeded for the demo; publish your own via the LMS handoff."
         action={
           <Link href="/lms" className="btn-primary">
             <Icon name="graduation-cap" className="h-4 w-4" /> Create a module

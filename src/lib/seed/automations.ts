@@ -29,7 +29,7 @@ export const automations: Automation[] = [
       { line: "Extracted: device=NeoDerm, lot=24-118, harm=none reported", kind: "ok" },
       { line: "Created draft complaint record CMP-2026-0311", kind: "ok" },
       { line: "Posted summary to #qa-triage (mock Slack)", kind: "ok" },
-      { line: "✔ Automation complete — 0 external calls (demo mode)", kind: "info" },
+      { line: "✔ Automation complete, 0 external calls (demo mode)", kind: "info" },
     ],
   },
   {
@@ -55,7 +55,7 @@ export const automations: Automation[] = [
       { line: "Trend check: seal-integrity cluster on Lot 24-118 ⚠", kind: "warn" },
       { line: "Rendered digest (1 page, PDF mock)", kind: "ok" },
       { line: "Queued email to quality-committee@gepromed (mock)", kind: "ok" },
-      { line: "✔ Digest ready — see Dashboard activity", kind: "info" },
+      { line: "✔ Digest ready, see Dashboard activity", kind: "info" },
     ],
   },
   {
@@ -102,7 +102,7 @@ export const automations: Automation[] = [
       { line: "▶ New employee detected: role=Customer Support (mock)", kind: "info" },
       { line: "Mapped 3 required modules for role", kind: "ok" },
       { line: "LMS handoff (mock): enrolment payload prepared", kind: "ok" },
-      { line: "⚠ Automation is PAUSED — enrolment not sent", kind: "warn" },
+      { line: "⚠ Automation is PAUSED, enrolment not sent", kind: "warn" },
       { line: "Resume from Automations page to activate", kind: "info" },
     ],
   },
@@ -114,7 +114,7 @@ export const automations: Automation[] = [
     trigger: "Schedule",
     schedule: "Daily 07:30 (mocked)",
     status: "Draft",
-    lastRun: "—",
+    lastRun: "–",
     runsThisMonth: 0,
     steps: [
       "Read project milestones",

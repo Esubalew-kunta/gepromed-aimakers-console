@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import {
-  stagesFor,
+  resolveAdvance,
   type Stage,
   type Parcours,
   type InterestLevel,
@@ -49,10 +49,17 @@ async function logEvent(leadId: string, type: string, payload: unknown) {
 export async function advanceStage(leadId: string, current: Stage, parcours: Parcours) {
   const sb = supabaseServer();
   if (!sb) return;
-  const stages = stagesFor(parcours);
-  const idx = stages.indexOf(current);
-  if (idx < 0 || idx >= stages.length - 1) return;
-  const next = stages[idx + 1];
+  // Flags that gate the Bootcamp caution/refund branch (SOP §Bootcamp).
+  const { data: row } = await sb
+    .from("leads")
+    .select("attended, caution_waived")
+    .eq("id", leadId)
+    .single();
+  const next = resolveAdvance(parcours, current, {
+    attended: row?.attended as boolean | null | undefined,
+    cautionWaived: row?.caution_waived as boolean | null | undefined,
+  });
+  if (!next) return;
 
   const patch: Record<string, unknown> = { stage: next };
   const tsCol = STAGE_TS[next];
@@ -66,11 +73,11 @@ export async function advanceStage(leadId: string, current: Stage, parcours: Par
 
   await sb.from("leads").update(patch).eq("id", leadId);
   await logEvent(leadId, `stage:${next}`, { from: current, parcours });
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /**
- * Mark a lead as "not interested" — the exit status available at any stage of
+ * Mark a lead as "not interested", the exit status available at any stage of
  * either parcours. Stops reminders and stamps the exit time.
  */
 export async function setNotInterested(leadId: string) {
@@ -85,7 +92,7 @@ export async function setNotInterested(leadId: string) {
     })
     .eq("id", leadId);
   await logEvent(leadId, "exit:not_interested", {});
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /** Set the interest badge. not_interested is a hard stop → reminders off. */
@@ -96,7 +103,7 @@ export async function setInterest(leadId: string, interest: InterestLevel) {
   if (interest === "not_interested") patch.reminders_active = false;
   await sb.from("leads").update(patch).eq("id", leadId);
   await logEvent(leadId, "interest", { interest });
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /** Toggle the per-lead reminders master switch. */
@@ -104,7 +111,39 @@ export async function toggleReminders(leadId: string, active: boolean) {
   const sb = supabaseServer();
   if (!sb) return;
   await sb.from("leads").update({ reminders_active: active }).eq("id", leadId);
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
+}
+
+/**
+ * Late-entry exception (SOP §Bootcamp): waive the 200€ caution + contract.
+ * When waived, the end-of-parcours refund step becomes "sans objet" and
+ * `resolveAdvance` skips `deposit_refunded`.
+ */
+export async function setCautionWaived(leadId: string, waived: boolean) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  await sb.from("leads").update({ caution_waived: waived }).eq("id", leadId);
+  await logEvent(leadId, "caution:waived", { waived });
+  revalidatePath("/trainees");
+}
+
+/**
+ * Mark whether the participant attended the full training. This gates the
+ * caution refund: refunded only if attended (and not waived); otherwise the
+ * caution is kept (SOP §Bootcamp).
+ */
+export async function setAttended(leadId: string, attended: boolean) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  await sb
+    .from("leads")
+    .update({
+      attended,
+      attendance_confirmed_at: attended ? new Date().toISOString() : null,
+    })
+    .eq("id", leadId);
+  await logEvent(leadId, "attendance", { attended });
+  revalidatePath("/trainees");
 }
 
 /** Add a staff comment to a lead's timeline (author = logged-in user). */
@@ -117,7 +156,7 @@ export async function addComment(leadId: string, body: string) {
   await sb
     .from("lead_comments")
     .insert({ lead_id: leadId, author: user?.name ?? "Staff", body: text });
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /** Delete a lead (demo housekeeping). */
@@ -125,13 +164,13 @@ export async function deleteLead(leadId: string) {
   const sb = supabaseServer();
   if (!sb) return;
   await sb.from("leads").delete().eq("id", leadId);
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /**
  * Staff uploads the lead's signed engagement document (manual signing path).
  * Stores the file in the private `documents` bucket, records a documents row
- * (pending verification), and — for the Bootcamp parcours — moves the lead to
+ * (pending verification), and, for the Bootcamp parcours, moves the lead to
  * `deposit_contract` (caution / contrat reçus). HelpMeSee has no signed
  * engagement step, so the stage is left unchanged there.
  */
@@ -172,7 +211,7 @@ export async function uploadDocument(
   }
   await sb.from("leads").update(patch).eq("id", leadId);
   await logEvent(leadId, "document:uploaded", { channel: "manual", parcours });
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
   return {};
 }
 
@@ -192,7 +231,7 @@ export async function verifyAndConfirm(leadId: string, docId: string) {
     })
     .eq("id", leadId);
   await logEvent(leadId, "document:verified", { docId });
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /** Staff picks (or changes) the engagement-contract template attached to a lead. */
@@ -203,7 +242,7 @@ export async function setLeadContractTemplate(leadId: string, templateId: string
     .from("leads")
     .update({ contract_template_id: templateId || null })
     .eq("id", leadId);
-  revalidatePath("/leads");
+  revalidatePath("/trainees");
 }
 
 /** Return a short-lived signed URL to view a stored document (private bucket). */

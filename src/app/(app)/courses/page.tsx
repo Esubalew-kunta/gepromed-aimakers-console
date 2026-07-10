@@ -27,7 +27,7 @@ export default async function CoursesPage() {
 
       {!configured ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Supabase isn&apos;t configured — set the keys in <code>.env.local</code> to manage courses.
+          Supabase isn&apos;t configured, set the keys in <code>.env.local</code> to manage courses.
         </div>
       ) : null}
 

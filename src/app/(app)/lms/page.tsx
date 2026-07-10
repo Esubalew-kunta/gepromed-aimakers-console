@@ -9,7 +9,7 @@ export default function LmsPage() {
       <PageHeader
         eyebrow="Enablement"
         title="LMS handoff"
-        description="Generate an internal micro-training with AI and publish it to your Learning Management System. This demo runs the full flow with a mock LMS — no LMS API is required."
+        description="Generate an internal micro-training with AI and publish it to your Learning Management System. This demo runs the full flow with a mock LMS, no LMS API is required."
       />
       <LmsHandoff />
     </>

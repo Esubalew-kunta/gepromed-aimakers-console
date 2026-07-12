@@ -9,6 +9,23 @@ import {
   type Parcours,
   type InterestLevel,
 } from "@/lib/leads-data";
+import { recordStageComms, type CommsLead } from "@/lib/notifications";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** Fields needed to render + record a stage email. */
+const COMMS_SELECT =
+  "id,first_name,last_name,email,funding,sponsor_name,trainings(title,price_eur,is_sponsored,sponsors)";
+
+/** Fetch the lead (with training) and fire the stage communication. */
+async function fireComms(
+  sb: SupabaseClient,
+  leadId: string,
+  parcours: Parcours,
+  stage: Stage,
+) {
+  const { data } = await sb.from("leads").select(COMMS_SELECT).eq("id", leadId).single();
+  if (data) await recordStageComms(sb, data as unknown as CommsLead, parcours, stage);
+}
 
 /**
  * Timestamp column set when a lead enters each stage. Covers the stages of
@@ -46,20 +63,40 @@ async function logEvent(leadId: string, type: string, payload: unknown) {
  * timestamp. The ordered stage list is resolved from the lead's parcours, so
  * HelpMeSee and Bootcamp leads walk their own distinct pathways.
  */
-export async function advanceStage(leadId: string, current: Stage, parcours: Parcours) {
+export async function advanceStage(
+  leadId: string,
+  current: Stage,
+  parcours: Parcours,
+): Promise<{ error?: string }> {
   const sb = supabaseServer();
-  if (!sb) return;
-  // Flags that gate the Bootcamp caution/refund branch (SOP §Bootcamp).
+  if (!sb) return {};
+  // Flags that gate the Bootcamp caution/refund branch (SOP §Bootcamp) and the
+  // HelpMeSee e-learning hard gate.
   const { data: row } = await sb
     .from("leads")
-    .select("attended, caution_waived")
+    .select("attended, caution_waived, elearning_completed")
     .eq("id", leadId)
     .single();
+
+  // HARD GATE (HelpMeSee): the foundation e-learning must be verified before
+  // simulator access can be sent. Cannot advance until then.
+  if (
+    parcours === "helpmesee" &&
+    current === "elearning_check" &&
+    !row?.elearning_completed
+  ) {
+    await logEvent(leadId, "gate:blocked", {
+      stage: current,
+      reason: "elearning_not_verified",
+    });
+    return { error: "Vérifiez d'abord les modules e-learning (accès simulateur bloqué)." };
+  }
+
   const next = resolveAdvance(parcours, current, {
     attended: row?.attended as boolean | null | undefined,
     cautionWaived: row?.caution_waived as boolean | null | undefined,
   });
-  if (!next) return;
+  if (!next) return {};
 
   const patch: Record<string, unknown> = { stage: next };
   const tsCol = STAGE_TS[next];
@@ -73,7 +110,12 @@ export async function advanceStage(leadId: string, current: Stage, parcours: Par
 
   await sb.from("leads").update(patch).eq("id", leadId);
   await logEvent(leadId, `stage:${next}`, { from: current, parcours });
+  // Background action: send + record the stage-specific participant email.
+  // (Entering pre_registration/deposit_contract also auto-attaches the
+  // engagement contract via the DB trigger trg_auto_contract.)
+  await fireComms(sb, leadId, parcours, next);
   revalidatePath("/trainees");
+  return {};
 }
 
 /**
@@ -143,6 +185,59 @@ export async function setAttended(leadId: string, attended: boolean) {
     })
     .eq("id", leadId);
   await logEvent(leadId, "attendance", { attended });
+  revalidatePath("/trainees");
+}
+
+/**
+ * Bootcamp eligibility gate (SOP §Bootcamp step 02 "Prérequis à vérifier").
+ * Staff check the requested form (specialty / status / country). Passing
+ * advances to pré-inscription (which auto-attaches the contract + emails the
+ * caution request); rejecting exits the lead as "not interested" with the
+ * "prérequis non conformes" reason.
+ */
+export async function verifyEligibility(leadId: string, pass: boolean, note?: string) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  const now = new Date().toISOString();
+  if (pass) {
+    await sb
+      .from("leads")
+      .update({
+        stage: "pre_registration",
+        prerequisites_ok_at: now,
+        pre_registration_at: now,
+        eligibility_checked_at: now,
+        eligibility_note: note?.trim() || null,
+      })
+      .eq("id", leadId);
+    await logEvent(leadId, "eligibility:passed", { note: note ?? null });
+    await fireComms(sb, leadId, "bootcamp", "pre_registration");
+  } else {
+    await sb
+      .from("leads")
+      .update({
+        interest: "not_interested",
+        reminders_active: false,
+        not_interested_at: now,
+        eligibility_checked_at: now,
+        eligibility_note: note?.trim() || "Prérequis non conformes",
+      })
+      .eq("id", leadId);
+    await logEvent(leadId, "eligibility:failed", { note: note ?? "Prérequis non conformes" });
+  }
+  revalidatePath("/trainees");
+}
+
+/**
+ * Verify (or un-verify) that the participant finished the mandatory e-learning
+ * modules. For HelpMeSee this is the HARD GATE that unblocks simulator access;
+ * for Bootcamp it's informational.
+ */
+export async function setElearningCompleted(leadId: string, done: boolean) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  await sb.from("leads").update({ elearning_completed: done }).eq("id", leadId);
+  await logEvent(leadId, "elearning:verified", { done });
   revalidatePath("/trainees");
 }
 
@@ -231,6 +326,9 @@ export async function verifyAndConfirm(leadId: string, docId: string) {
     })
     .eq("id", leadId);
   await logEvent(leadId, "document:verified", { docId });
+  // Confirmation email (uses the lead's own parcours).
+  const { data: p } = await sb.from("leads").select("parcours").eq("id", leadId).single();
+  await fireComms(sb, leadId, (p?.parcours as Parcours) ?? "bootcamp", "confirmed");
   revalidatePath("/trainees");
 }
 

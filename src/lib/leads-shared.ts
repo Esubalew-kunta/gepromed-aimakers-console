@@ -397,6 +397,23 @@ export interface LeadDocument {
   created_at: string;
 }
 
+/** Row in the audit/activity log written on each stage transition + action. */
+export interface LeadEvent {
+  id: string;
+  type: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/** Row in email_log — one per message the pipeline sent to the participant. */
+export interface LeadEmail {
+  id: string;
+  template: string | null;
+  to_email: string | null;
+  status: string | null;
+  sent_at: string;
+}
+
 export interface Lead {
   id: string;
   ref: string | null;
@@ -427,6 +444,18 @@ export interface Lead {
   attendance_confirmed_at: string | null;
   elearning_completed: boolean;
   year_of_residency: string | null;
+
+  // Funding / sponsor (from the public register form) + foundation (HelpMeSee
+  // form) + eligibility (Bootcamp prérequis gate). Intake migration.
+  funding: "self" | "sponsored";
+  sponsor_name: string | null;
+  sponsor_contact: string | null;
+  sponsor_logo_url: string | null;
+  helpmesee_ref: string | null;
+  coordinator: string | null;
+  eligibility_note: string | null;
+  eligibility_checked_at: string | null;
+  contract_attached_at: string | null;
 
   // Legacy single-pipeline timestamps (kept).
   deposit_paid_at: string | null;
@@ -470,6 +499,8 @@ export interface Lead {
   } | null;
   lead_comments: LeadComment[];
   documents: LeadDocument[];
+  lead_events?: LeadEvent[];
+  email_log?: LeadEmail[];
   contract_template_id: string | null;
   contract_template: { id: string; name: string; file_url: string | null } | null;
 }

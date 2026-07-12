@@ -34,6 +34,8 @@ import {
   setLeadContractTemplate,
   setCautionWaived,
   setAttended,
+  verifyEligibility,
+  setElearningCompleted,
 } from "@/app/(app)/trainees/actions";
 import type { ContractTemplate } from "@/lib/contracts-shared";
 
@@ -78,6 +80,35 @@ function fmtRange(a?: string, b?: string) {
 
 type Tab = Stage | "all" | "not_interested";
 type ParcoursFilter = Parcours | "all";
+
+/**
+ * Per-step guidance shown in the drawer's "Cette étape" panel — what the step
+ * means and what advancing triggers in the background (email / contract /
+ * gate). Makes each stage read differently instead of a generic screen.
+ */
+const STAGE_HELP: Record<Parcours, Partial<Record<Stage, { what: string; onAdvance: string }>>> = {
+  helpmesee: {
+    lead: { what: "Demande reçue via la fondation. Envoyez le formulaire d'inscription HelpMeSee.", onAdvance: "Envoie l'email « formulaire d'inscription »." },
+    enrollment_form: { what: "En attente du formulaire d'inscription HelpMeSee complété.", onAdvance: "Envoie l'email « validation des dates »." },
+    dates_validation: { what: "Validez les dates de formation avec un instructeur.", onAdvance: "Envoie l'email « facture »." },
+    invoice: { what: "Facture à régler (en une ou plusieurs fois).", onAdvance: "Envoie l'email « modules e-learning »." },
+    elearning_check: { what: "GATE — les modules e-learning de la fondation doivent être vérifiés AVANT l'accès simulateur.", onAdvance: "Envoie l'email « accès simulateur + infos pratiques »." },
+    simulator_access: { what: "Identifiants simulateur + infos pratiques envoyés.", onAdvance: "Confirme la place du participant." },
+    confirmed: { what: "Prêt — formation planifiée.", onAdvance: "Envoie le questionnaire de satisfaction et clôture." },
+    done: { what: "Parcours terminé — questionnaire de satisfaction envoyé.", onAdvance: "" },
+  },
+  bootcamp: {
+    lead: { what: "Nouvelle demande. Vérifiez l'éligibilité aux prérequis.", onAdvance: "Passe à l'étape prérequis." },
+    prerequisites: { what: "GATE — vérifiez spécialité / statut / pays. Bootcamp = chirurgie vasculaire uniquement.", onAdvance: "Si conforme : email de pré-inscription + contrat attaché automatiquement." },
+    pre_registration: { what: "Caution 200 € + contrat d'engagement demandés (le contrat est attaché automatiquement).", onAdvance: "Marque la caution / le contrat comme reçus." },
+    deposit_contract: { what: "Caution et contrat reçus.", onAdvance: "Envoie l'email « infos pratiques » (logo sponsor ou tarif — Règle 1)." },
+    practical_info: { what: "Infos pratiques envoyées (J-30).", onAdvance: "Envoie l'email « accès e-learning » (LMS Gepromed)." },
+    elearning_sent: { what: "Accès e-learning envoyés (J-15/7).", onAdvance: "Confirme la place du participant." },
+    confirmed: { what: "Prêt pour l'événement. Confirmez la présence pour conditionner le remboursement.", onAdvance: "Caution remboursée (si présent en intégralité) ou clôture." },
+    deposit_refunded: { what: "Caution remboursée.", onAdvance: "Envoie les modules finaux + questionnaire de satisfaction." },
+    done: { what: "Parcours terminé — modules finaux + satisfaction.", onAdvance: "" },
+  },
+};
 
 export function LeadBoard({
   leads,
@@ -546,6 +577,16 @@ function LeadDrawer({
   // Comments oldest→newest for chat reading (getLeads returns newest-first).
   const chat = [...lead.lead_comments].reverse();
 
+  // Stage-specific gates + guidance.
+  const help = STAGE_HELP[parcours][lead.stage];
+  const isEligibilityGate = parcours === "bootcamp" && lead.stage === "prerequisites";
+  const isElearningGate = parcours === "helpmesee" && lead.stage === "elearning_check";
+
+  // Communications timeline: emails recorded on each stage transition, newest first.
+  const emails = [...(lead.email_log ?? [])].sort((a, b) =>
+    b.sent_at.localeCompare(a.sent_at),
+  );
+
   return (
     <>
       {/* Header */}
@@ -622,11 +663,63 @@ function LeadDrawer({
             </p>
           ) : null}
 
+          {/* Cette étape — what the step means + what advancing triggers */}
+          {help ? (
+            <div className="mt-4 rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-2.5">
+              <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                Cette étape
+              </p>
+              <p className="text-[13px] text-ink-700">{help.what}</p>
+              {help.onAdvance ? (
+                <p className="mt-1 text-[12px] text-ink-500">→ {help.onAdvance}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* HelpMeSee e-learning HARD GATE: verify before simulator access */}
+          {isElearningGate ? (
+            <div className="mt-3">
+              <button
+                onClick={() => run(() => setElearningCompleted(lead.id, !lead.elearning_completed))}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                  lead.elearning_completed
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-amber-50 text-amber-700"
+                }`}
+              >
+                {lead.elearning_completed
+                  ? "E-learning vérifié ✓"
+                  : "Marquer l'e-learning vérifié"}
+              </button>
+            </div>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            {advance ? (
+            {isEligibilityGate ? (
+              <>
+                <button
+                  onClick={() => run(() => verifyEligibility(lead.id, true))}
+                  className="btn-primary !py-2 !text-sm"
+                >
+                  Prérequis conformes →
+                </button>
+                <button
+                  onClick={() => run(() => verifyEligibility(lead.id, false))}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                >
+                  Prérequis non conformes
+                </button>
+              </>
+            ) : advance ? (
               <button
                 onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
-                className="btn-primary !py-2 !text-sm"
+                disabled={isElearningGate && !lead.elearning_completed}
+                title={
+                  isElearningGate && !lead.elearning_completed
+                    ? "Vérifiez d'abord les modules e-learning"
+                    : undefined
+                }
+                className="btn-primary !py-2 !text-sm disabled:opacity-50"
               >
                 {advanceText} →
               </button>
@@ -735,7 +828,71 @@ function LeadDrawer({
           </dl>
         </div>
 
-        {/* Engagement contract (template, from the platform) */}
+        {/* Financement / sponsor (per-lead, from the register form) */}
+        <div className="border-b border-ink-100 px-6 py-5">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+            Financement
+          </p>
+          {lead.funding === "sponsored" ? (
+            <div className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3.5 py-3">
+              {lead.sponsor_logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={lead.sponsor_logo_url}
+                  alt={lead.sponsor_name ?? "Sponsor"}
+                  className="h-9 w-9 rounded-lg border border-violet-200 bg-white object-contain"
+                />
+              ) : (
+                <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-200 bg-white text-xs font-bold text-violet-700">
+                  {(lead.sponsor_name ?? "SP").slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1">
+                <p className="text-[13px] font-semibold text-ink-900">
+                  {lead.sponsor_name ?? "Sponsorisé"}
+                </p>
+                <p className="text-xs text-violet-700">
+                  Sponsorisé — logo affiché sur les communications (Règle 1)
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-ink-200 bg-white text-ink-500">
+                <Icon name="clipboard-check" className="h-4 w-4" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[13px] font-semibold text-ink-900">Autofinancé</p>
+                <p className="text-xs text-ink-500">
+                  Tarif participant affiché sur les communications
+                  {t ? ` · ${euro(t.price_eur)}` : ""}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Fondation (HelpMeSee only) */}
+        {parcours === "helpmesee" ? (
+          <div className="border-b border-ink-100 px-6 py-5">
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+              Fondation
+            </p>
+            <dl className="grid grid-cols-[104px_1fr] gap-x-3 gap-y-1.5 text-[13px]">
+              <dt className="text-ink-400">Financement</dt>
+              <dd className="text-ink-700">Fondation HelpMeSee · facture</dd>
+              <dt className="text-ink-400">Référence</dt>
+              <dd className="text-ink-700">{lead.helpmesee_ref || "–"}</dd>
+              <dt className="text-ink-400">Coordinateur</dt>
+              <dd className="text-ink-700">{lead.coordinator || "–"}</dd>
+            </dl>
+          </div>
+        ) : null}
+
+        {/* Engagement contract + signed document — Bootcamp only (HelpMeSee is
+            funded by the foundation, so there is no deposit/contract step). */}
+        {parcours === "bootcamp" ? (
+          <>
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
             Engagement contract
@@ -795,6 +952,51 @@ function LeadDrawer({
             Signed document
           </p>
           <DocState lead={lead} />
+        </div>
+          </>
+        ) : null}
+
+        {/* Communications — the emails fired on each stage transition */}
+        <div className="border-b border-ink-100 px-6 py-5">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+            Communications
+          </p>
+          {emails.length === 0 ? (
+            <p className="text-[13px] text-ink-400">
+              Aucun email pour l&apos;instant. Un email est généré et enregistré
+              automatiquement à chaque changement d&apos;étape.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {emails.map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center gap-3 rounded-lg border border-ink-100 bg-ink-50 px-3 py-2"
+                >
+                  <Icon name="mail" className="h-4 w-4 text-brand-500" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-medium text-ink-800">
+                      {e.template ?? "email"}
+                    </p>
+                    <p className="text-[11px] text-ink-400">
+                      {e.to_email} · {fmtDay(e.sent_at)}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      e.status === "sent"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : e.status === "failed"
+                          ? "bg-red-50 text-red-700"
+                          : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {e.status ?? "queued"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Comments */}

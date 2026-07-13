@@ -119,10 +119,12 @@ export interface BuildInput {
   fx: FxResult | null; // null when conversion failed OR currency EUR handled separately
   fxError?: string | null;
   id: string;
+  /** Per-km rate read from the master's own `Kilométrage` cell (Q5), or null if unset. */
+  mileageRate?: number | null;
 }
 
 export function buildProcessed(input: BuildInput): ProcessedExpense {
-  const { extraction: r, deposit, fx, fxError, sourceFile, fileHash, id } = input;
+  const { extraction: r, deposit, fx, fxError, sourceFile, fileHash, id, mileageRate } = input;
   const routing = inferRouting(r, deposit);
 
   const reviewReasons: string[] = [];
@@ -147,8 +149,21 @@ export function buildProcessed(input: BuildInput): ProcessedExpense {
   if (fx?.dateAdjusted) reviewReasons.push(`Taux du ${fx.rateDate} (jour ouvré précédent)`);
   if (fxError) reviewReasons.push(fxError);
 
-  const amountEUR =
+  let amountEUR =
     r.currency === "EUR" ? r.amountTTC : fx ? fx.amountEUR : null;
+
+  // Mileage with a real distance but no direct euro figure on the document:
+  // compute the reimbursement from the workbook's own rate. Never invent a
+  // rate — if Q5 is unset, leave amountEUR null and flag for Nathalie.
+  let mileageComputed = false;
+  if (r.category === "mileage" && r.distanceKm != null && amountEUR == null) {
+    if (mileageRate != null) {
+      amountEUR = Number((mileageRate * r.distanceKm).toFixed(2));
+      mileageComputed = true;
+    } else {
+      reviewReasons.push("Barème kilométrique (Q5) non défini dans le fichier maître — impossible de calculer");
+    }
+  }
 
   return {
     id,
@@ -164,12 +179,15 @@ export function buildProcessed(input: BuildInput): ProcessedExpense {
     docNumber: r.docNumber,
     location: r.location,
     purpose: r.purpose || deposit.purpose || null,
+    etude: null, // not extracted (PRD: "often blank") — Nathalie fills it in during review
     passengers: r.passengers,
     originalAmount: r.amountTTC,
     originalCurrency: r.currency,
     vatRecoverable: r.vatRecoverable,
     amountEUR,
     fx,
+    distanceKm: r.distanceKm,
+    mileageComputed,
     traveler: routing.traveler,
     travelerSource: routing.travelerSource,
     tripLabel: routing.tripLabel,

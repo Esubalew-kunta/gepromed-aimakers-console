@@ -34,6 +34,8 @@ export interface SheetRow {
   vatRecoverable: number | null;
   originalCurrency: string | null;
   fx: FxResult | null;
+  distanceKm: number | null;
+  etude: string | null;
 }
 
 // Grouping metadata for a managed trip sheet.
@@ -74,6 +76,18 @@ export async function loadWorkbook(data: ArrayBuffer | Buffer): Promise<ExcelJS.
 export async function workbookToBuffer(wb: ExcelJS.Workbook): Promise<Buffer> {
   const out = await wb.xlsx.writeBuffer();
   return Buffer.from(out);
+}
+
+/** The per-km rate Nathalie sets in the workbook's own `Kilométrage` cell (Q5), or null if unset. Never guessed. */
+export function readMileageRate(wb: ExcelJS.Workbook): number | null {
+  const defined = wb.definedNames.getRanges(MATRICE.definedNameKm);
+  const ref = defined?.ranges?.[0];
+  if (!ref) return null;
+  const m = /!\$?([A-Z]+)\$?(\d+)/.exec(ref);
+  if (!m) return null;
+  const ws = wb.getWorksheet(MATRICE.templateSheet);
+  const value = ws?.getCell(`${m[1]}${m[2]}`).value;
+  return typeof value === "number" ? value : null;
 }
 
 export function getTemplateSheet(wb: ExcelJS.Workbook): ExcelJS.Worksheet {
@@ -188,20 +202,33 @@ function writeExpenseRow(ws: ExcelJS.Worksheet, row: number, exp: SheetRow) {
   const set = (col: string, v: ExcelJS.CellValue) => (ws.getCell(`${col}${row}`).value = v);
 
   set("B", fmtDateLabel(exp.issueDate));
-  set("C", "GEPROMED");
+  // C "Etude" (study/project code) isn't extracted (PRD §7.4: "often blank")
+  // — only written when Nathalie fills it in during review.
+  if (exp.etude) set("C", exp.etude);
   set("D", exp.purpose || exp.vendor || "Déplacement professionnel");
   set("E", exp.location || "—");
 
   const eur = exp.amountEUR;
-  if (exp.category && eur != null) set(CATEGORY_COLUMN[exp.category].col, Number(eur.toFixed(2)));
+  if (exp.category === "mileage" && exp.distanceKm != null) {
+    // Real distance on the doc: write it into Kilomètres (N) and let the
+    // reimbursement (O) recompute live from the workbook's own rate cell, so
+    // it stays correct if Nathalie edits the rate later.
+    set(MATRICE.mileageCol, Number(exp.distanceKm.toFixed(1)));
+    ws.getCell(`${MATRICE.mileageReimbCol}${row}`).value = {
+      formula: `+${MATRICE.definedNameKm}*${MATRICE.mileageCol}${row}`,
+    } as ExcelJS.CellFormulaValue;
+  } else if (exp.category && eur != null) {
+    // Every other category (including mileage with no distance captured,
+    // where amountEUR is a flat figure read straight off the document).
+    set(CATEGORY_COLUMN[exp.category].col, Number(eur.toFixed(2)));
+  }
   if (exp.vatRecoverable != null) set(MATRICE.vatCol, Number(exp.vatRecoverable.toFixed(2)));
   if (exp.originalCurrency && exp.originalCurrency !== "EUR") set(MATRICE.currencyCol, exp.originalCurrency);
 
-  ws.getCell(`${MATRICE.mileageReimbCol}${row}`).value = {
-    formula: `+Kilométrage*N${row}`,
-  } as ExcelJS.CellFormulaValue;
+  // Total excludes Kilomètres (N, a distance not an amount) so a real
+  // distance in N is never added into the euro total alongside O.
   ws.getCell(`${MATRICE.totalCol}${row}`).value = {
-    formula: `SUM(${MATRICE.firstCategoryCol}${row}:${MATRICE.lastCategoryCol}${row})`,
+    formula: `SUM(${MATRICE.firstCategoryCol}${row}:M${row})+SUM(${MATRICE.mileageReimbCol}${row}:${MATRICE.lastCategoryCol}${row})`,
   } as ExcelJS.CellFormulaValue;
 
   if (exp.fx && exp.category && exp.originalCurrency && exp.originalCurrency !== "EUR") {

@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { commitBatch } from "@/lib/expenses/orchestrator";
-import { loadMaster, saveMaster } from "@/lib/expenses/storage";
+import { commitBatch, summarize } from "@/lib/expenses/orchestrator";
+import { loadMaster, saveMaster, recordRun } from "@/lib/expenses/storage";
 import type { ProcessedExpense } from "@/lib/expenses/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
-
-const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /**
  * After the master is saved to the DB, mirror the committed rows to the Google
@@ -28,12 +26,14 @@ async function pushToGoogleSheet(
     .map((e) => ({
       docKey: e.docKey,
       issueDateLabel: e.issueDateLabel,
+      etude: e.etude,
       purpose: e.purpose,
       location: e.location,
       originalCurrency: e.originalCurrency,
       amountEUR: e.amountEUR,
       category: e.category,
       vatRecoverable: e.vatRecoverable,
+      distanceKm: e.distanceKm,
     }));
   if (rows.length === 0) return false;
   try {
@@ -90,22 +90,13 @@ export async function POST(req: Request) {
 
   try {
     const { buffer } = await commitBatch({ masterBuffer, expenses, employeeName, runId });
-    // Snapshot the download bytes into an INDEPENDENT copy NOW: saveMaster's
-    // upload (undici fetch) can detach the buffer's underlying ArrayBuffer,
-    // which would otherwise leave the response body empty ("empty Excel").
-    const downloadBody = new Uint8Array(buffer);
-    await saveMaster(user.email, buffer); // persist the updated master for next time
-    // Then mirror the committed rows to the Google Sheet (idempotent, best-effort).
+    await saveMaster(user.email, buffer); // persist the updated master in Supabase storage for next time
+    // Mirror the committed rows to the Google Sheet (idempotent, best-effort).
     const sheetSynced = await pushToGoogleSheet(runId, employeeName, expenses);
-    return new NextResponse(downloadBody, {
-      status: 200,
-      headers: {
-        "Content-Type": XLSX_MIME,
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
-        "Cache-Control": "no-store",
-        "X-Sheet-Synced": sheetSynced ? "true" : "false",
-      },
-    });
+    // Record the committed data in the DB audit trail (validated = locked).
+    void recordRun(user.email, summarize(runId, fileName, expenses, []), "committed");
+    const written = expenses.filter((e) => !e.duplicateOfId && !e.idempotentSkip).length;
+    return NextResponse.json({ ok: true, written, sheetSynced });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

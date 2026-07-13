@@ -70,6 +70,7 @@ Règles métier (non négociables) :
 - Un fichier peut contenir PLUSIEURS justificatifs (ex : deux tickets de bus) → renvoie un objet par justificatif distinct.
 - Plusieurs passagers sur un billet → renseigne passengers[] et ajoute une alerte.
 - Numéro de document (facture/billet/réservation) → docNumber (sert à la déduplication).
+- MILEAGE (indemnités kilométriques) : si le document indique une DISTANCE réellement parcourue en km (ex : relevé de trajet, note manuscrite "120 km") plutôt qu'un montant déjà calculé, renseigne distanceKm avec ce nombre. Ne l'invente jamais et ne le déduis pas d'une adresse — uniquement si le chiffre est explicitement écrit. Si le document indique déjà un montant en euros, laisse distanceKm à null et renseigne amountTTC normalement.
 - Si le fichier n'est pas un justificatif (spam, document illisible, non-reçu) → isReceipt=false avec la raison.
 
 Tu réponds UNIQUEMENT via l'outil "return_extraction". Aucune donnée inventée.`;
@@ -92,6 +93,7 @@ const EXTRACTION_SCHEMA = {
           vendor: { type: ["string", "null"] },
           category: { type: ["string", "null"], enum: ["flight", "hotel", "train", "taxi", "toll", "parking", "meals", "conference", "mileage", "misc", null] },
           vatRecoverable: { type: ["number", "null"], description: "TVA seulement si détaillée" },
+          distanceKm: { type: ["number", "null"], description: "distance en km, uniquement si un chiffre de distance réel est imprimé (mileage)" },
           docNature: { type: ["string", "null"], enum: ["invoice", "receipt", "booking", "other", null] },
           paymentProofPresent: { type: "boolean" },
           docNumber: { type: ["string", "null"] },

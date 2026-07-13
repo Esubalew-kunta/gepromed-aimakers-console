@@ -6,10 +6,20 @@ import { ExpenseUploader } from "./ExpenseUploader";
 import {
   CATEGORY_KEYS,
   CATEGORY_COLUMN,
+  MATRICE_HEADERS,
   type AnalyzeResult,
   type ProcessedExpense,
   type CategoryKey,
 } from "@/lib/expenses/types";
+
+const categoryLabel = (k: string | null) =>
+  k && k in CATEGORY_COLUMN ? CATEGORY_COLUMN[k as CategoryKey].label : k || "–";
+
+// Matrice header text -> the category key that lands in that column (for the
+// 10 category-amount headers). Headers with no entry (Etude, Kilomètres) are
+// never populated by the extraction pipeline today.
+const HEADER_TO_CATEGORY: Partial<Record<string, CategoryKey>> = {};
+for (const k of CATEGORY_KEYS) HEADER_TO_CATEGORY[CATEGORY_COLUMN[k].label] = k;
 
 type Phase = "setup" | "analyzing" | "review" | "committing" | "done";
 
@@ -45,6 +55,9 @@ export function ExpenseRunner() {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sheetSynced, setSheetSynced] = useState<boolean | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
   const masterInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -130,26 +143,31 @@ export function ExpenseRunner() {
       fd.append("runId", result.runId);
       fd.append("fileName", result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx");
       const res = await fetch("/api/expenses/commit", { method: "POST", body: fd });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Échec de l'écriture.");
-      }
-      setSheetSynced(res.headers.get("X-Sheet-Synced") === "true");
-      const blob = await res.blob();
-      const name = result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      setCommittedName(name);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de l'écriture.");
+      setSheetSynced(Boolean(data.sheetSynced));
+      setCommittedName(result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx");
       setPhase("done");
     } catch (e) {
       setError((e as Error).message);
       setPhase("review");
+    }
+  }
+
+  async function clearAllData() {
+    setClearing(true);
+    setClearMessage(null);
+    try {
+      const res = await fetch("/api/expenses/clear", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Échec de la suppression.");
+      const sheetPart = data.sheetCleared ? "Google Sheet vidé." : "Google Sheet non vidé (vérifier la config).";
+      setClearMessage(`${data.deletedRuns ?? 0} lot(s) supprimé(s) de la base · ${sheetPart}`);
+      setConfirmClear(false);
+    } catch (e) {
+      setClearMessage((e as Error).message);
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -166,6 +184,36 @@ export function ExpenseRunner() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {clearMessage && <span className="text-xs text-ink-500">{clearMessage}</span>}
+        <button
+          type="button"
+          onClick={() => setConfirmClear(true)}
+          className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+          title="Supprime les données enregistrées dans la base ET vide le Google Sheet partagé (téléchargez le fichier avant, si besoin)"
+        >
+          <Icon name="clipboard-check" className="h-4 w-4" />
+          Effacer toutes les données
+        </button>
+        <a
+          href="/api/expenses/download-sheet"
+          className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50"
+          title="Télécharge l'état actuel du Google Sheet partagé (tout ce qui a été commité par tout le monde)"
+        >
+          <Icon name="clipboard-check" className="h-4 w-4" />
+          Télécharger le Google Sheet (.xlsx)
+        </a>
+      </div>
+      {confirmClear && (
+        <ConfirmModal
+          title="Effacer toutes les données de dépenses ?"
+          message="Ceci supprime définitivement l'historique des lots dans la base de données ET vide toutes les lignes du Google Sheet partagé (les en-têtes et le total cumulé restent). Le fichier maître Excel n'est pas touché. Téléchargez d'abord une copie si vous n'en avez pas encore — cette action est irréversible pour tout le monde utilisant ce Sheet."
+          confirmLabel={clearing ? "Suppression…" : "Oui, tout effacer"}
+          disabled={clearing}
+          onConfirm={clearAllData}
+          onCancel={() => setConfirmClear(false)}
+        />
+      )}
       {!extractionReady && (
         <Banner tone="amber">
           La clé d&apos;extraction IA (OPENAI_API_KEY ou ANTHROPIC_API_KEY) n&apos;est pas configurée sur ce
@@ -213,7 +261,7 @@ export function ExpenseRunner() {
           />
         </div>
       )}
-      {phase === "committing" && <Progress label="Écriture dans le fichier Excel de Nathalie…" />}
+      {phase === "committing" && <Progress label="Envoi des dépenses vers le Google Sheet en cours…" />}
       {phase === "done" && (
         <DoneCard
           name={committedName}
@@ -222,6 +270,88 @@ export function ExpenseRunner() {
           onReset={reset}
         />
       )}
+    </div>
+  );
+}
+
+function CategoryBreakdown({ expenses }: { expenses: ProcessedExpense[] }) {
+  const totals = new Map<string, number>();
+  for (const e of expenses) {
+    const key = e.category ?? "misc";
+    totals.set(key, (totals.get(key) ?? 0) + (e.amountEUR ?? 0));
+  }
+  const rows = [...totals.entries()]
+    .map(([key, total]) => ({ key, total, label: categoryLabel(key) }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const max = rows[0]?.total ?? 0;
+
+  return (
+    <div className="rounded-2xl border border-ink-200 bg-white p-4">
+      <div className="text-sm font-semibold text-ink-900">Répartition par catégorie</div>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-xs text-ink-400">
+          Aucun montant exploitable pour l&apos;instant (dépenses en attente de vérification/montant).
+        </p>
+      ) : (
+      <div className="mt-3 space-y-2">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-3 text-xs">
+            <div className="w-40 shrink-0 truncate whitespace-pre-line text-ink-600" title={r.label}>{r.label}</div>
+            <div className="h-4 flex-1 overflow-hidden rounded bg-ink-50">
+              <div
+                className="h-full rounded bg-brand-500"
+                style={{ width: `${Math.max(4, (r.total / max) * 100)}%` }}
+              />
+            </div>
+            <div className="w-20 shrink-0 text-right font-medium text-ink-900">{eur(r.total)}</div>
+          </div>
+        ))}
+      </div>
+      )}
+    </div>
+  );
+}
+
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel,
+  disabled,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  disabled?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-5 shadow-xl">
+        <div className="text-sm font-semibold text-ink-900">{title}</div>
+        <p className="mt-2 text-xs text-ink-600">{message}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={disabled}
+            className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-600 hover:bg-ink-50 disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={disabled}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -360,8 +490,14 @@ function SetupCard(props: {
           onClick={p.onAnalyze}
           className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Icon name="clipboard-check" className="h-4 w-4" />
-          {p.analyzing ? "Analyse en cours…" : "Analyser les justificatifs"}
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            {p.analyzing ? (
+              <span key="spinner" className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            ) : (
+              <Icon key="icon" name="clipboard-check" className="h-4 w-4" />
+            )}
+          </span>
+          <span>{p.analyzing ? "Analyse en cours…" : "Analyser les justificatifs"}</span>
         </button>
         {!p.canAnalyze && !p.analyzing && (
           <span className="text-xs text-ink-400">Fichier maître + justificatifs + description requis.</span>
@@ -408,6 +544,8 @@ function ReviewTable({
         </div>
       </div>
 
+      <CategoryBreakdown expenses={active} />
+
       {result.alerts.length > 0 && (
         <Banner tone="amber">
           <div className="font-semibold">Alertes à vérifier</div>
@@ -420,26 +558,22 @@ function ReviewTable({
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-ink-200 bg-white">
-        <table className="w-full min-w-[1050px] text-left text-xs">
+        <table className="w-full min-w-[2100px] text-left text-xs">
           <thead className="bg-ink-50 text-ink-500">
             <tr>
-              {["Justificatif", "Date", "Fournisseur", "Catégorie", "Montant d'origine", "Montant EUR", "TVA", "Feuille", "Voyageur", "Objet", "État"].map((h) => (
-                <th key={h} className="px-2.5 py-2 font-semibold">{h}</th>
+              <th className="px-2.5 py-2 font-semibold">Justificatif</th>
+              <th className="px-2.5 py-2 font-semibold">Catégorie</th>
+              {MATRICE_HEADERS.map((h) => (
+                <th key={h} className="whitespace-pre-line px-2.5 py-2 font-semibold">{h}</th>
               ))}
+              <th className="px-2.5 py-2 font-semibold">docKey</th>
+              <th className="px-2.5 py-2 font-semibold">État</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
             {active.map((e) => (
               <tr key={e.id} className={e.needsReview ? "bg-amber-50/50" : ""}>
                 <td className="px-2.5 py-2 text-ink-500">{e.sourceFile}</td>
-                <td className="px-2.5 py-2">
-                  <input
-                    value={e.issueDateLabel || ""}
-                    onChange={(ev) => onPatch(e.id, { issueDateLabel: ev.target.value })}
-                    className="w-24 rounded border border-ink-200 px-1.5 py-1"
-                  />
-                </td>
-                <td className="px-2.5 py-2 text-ink-700">{e.vendor || "–"}</td>
                 <td className="px-2.5 py-2">
                   <select
                     value={e.category ?? ""}
@@ -452,53 +586,124 @@ function ReviewTable({
                     ))}
                   </select>
                 </td>
-                <td className="px-2.5 py-2 text-ink-600">
-                  {e.originalAmount != null ? `${e.originalAmount} ${e.originalCurrency || ""}` : "–"}
-                  {e.fx && (
-                    <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR, ${e.fx.source} ${e.fx.rateDate}`}>
-                      @ {e.fx.rate} ({e.fx.source})
-                    </div>
-                  )}
-                </td>
-                <td className="px-2.5 py-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={e.amountEUR ?? ""}
-                    onChange={(ev) => onPatch(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
-                    className="w-24 rounded border border-ink-200 px-1.5 py-1"
-                  />
-                </td>
-                <td className="px-2.5 py-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={e.vatRecoverable ?? ""}
-                    onChange={(ev) => onPatch(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
-                    className="w-16 rounded border border-ink-200 px-1.5 py-1"
-                  />
-                </td>
-                <td className="px-2.5 py-2">
-                  <input
-                    value={e.sheetName}
-                    onChange={(ev) => onPatch(e.id, { sheetName: ev.target.value })}
-                    className="w-28 rounded border border-ink-200 px-1.5 py-1"
-                  />
-                </td>
-                <td className="px-2.5 py-2">
-                  <input
-                    value={e.traveler}
-                    onChange={(ev) => onPatch(e.id, { traveler: ev.target.value })}
-                    className="w-32 rounded border border-ink-200 px-1.5 py-1"
-                  />
-                </td>
-                <td className="px-2.5 py-2">
-                  <input
-                    value={e.purpose || ""}
-                    onChange={(ev) => onPatch(e.id, { purpose: ev.target.value })}
-                    className="w-36 rounded border border-ink-200 px-1.5 py-1"
-                  />
-                </td>
+                {MATRICE_HEADERS.map((h) => {
+                  if (h === "Date") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          value={e.issueDateLabel || ""}
+                          onChange={(ev) => onPatch(e.id, { issueDateLabel: ev.target.value })}
+                          className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "Etude") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          value={e.etude || ""}
+                          onChange={(ev) => onPatch(e.id, { etude: ev.target.value || null })}
+                          placeholder="—"
+                          title="Non extrait par l'IA — saisie manuelle"
+                          className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "Objet") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          value={e.purpose || ""}
+                          onChange={(ev) => onPatch(e.id, { purpose: ev.target.value })}
+                          className="w-36 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "Lieu du déplacement") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          value={e.location || ""}
+                          onChange={(ev) => onPatch(e.id, { location: ev.target.value })}
+                          className="w-32 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "TVA récupérable") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={e.vatRecoverable ?? ""}
+                          onChange={(ev) => onPatch(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
+                          className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "Kilomètres") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={e.distanceKm ?? ""}
+                          onChange={(ev) => onPatch(e.id, { distanceKm: ev.target.value === "" ? null : Number(ev.target.value) })}
+                          title="Distance réelle (si indiquée sur le justificatif) — calcule le remboursement via le barème du fichier maître"
+                          className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "Devise de dépense") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          value={e.originalCurrency || ""}
+                          onChange={(ev) => onPatch(e.id, { originalCurrency: ev.target.value || null })}
+                          className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                      </td>
+                    );
+                  }
+                  if (h === "Total") {
+                    return (
+                      <td key={h} className="px-2.5 py-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={e.amountEUR ?? ""}
+                          onChange={(ev) => onPatch(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
+                          className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                        />
+                        {e.fx && (
+                          <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR, ${e.fx.source} ${e.fx.rateDate}`}>
+                            @ {e.fx.rate} ({e.fx.source})
+                          </div>
+                        )}
+                      </td>
+                    );
+                  }
+                  // The 10 category-amount columns (Billet d'avion .. Divers,
+                  // including Remboursement du kilométrage for mileage).
+                  const owningCategory = HEADER_TO_CATEGORY[h];
+                  const isThisRowsCategory = owningCategory && e.category === owningCategory;
+                  return (
+                    <td key={h} className="px-2.5 py-2 text-center">
+                      {isThisRowsCategory ? (
+                        <span className="font-medium text-ink-900">{eur(e.amountEUR)}</span>
+                      ) : (
+                        <span className="text-ink-300">–</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td className="px-2.5 py-2 font-mono text-[10px] text-ink-400">{e.docKey}</td>
                 <td className="px-2.5 py-2">
                   {e.needsReview ? (
                     <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title={e.reviewReasons.join(" · ")}>
@@ -513,19 +718,31 @@ function ReviewTable({
             {excluded.map((e) => (
               <tr key={e.id} className="bg-ink-50/60 text-ink-400">
                 <td className="px-2.5 py-2">{e.sourceFile}</td>
+                <td className="px-2.5 py-2">{categoryLabel(e.category)}</td>
                 <td className="px-2.5 py-2">{e.issueDateLabel || "–"}</td>
-                <td className="px-2.5 py-2">{e.vendor || "–"}</td>
-                <td className="px-2.5 py-2" colSpan={7}>
-                  {e.duplicateOfId ? "Doublon, compté une seule fois" : "Déjà traité lors d'un run précédent"}
+                <td className="px-2.5 py-2">{e.purpose || "–"}</td>
+                <td className="px-2.5 py-2">{e.location || "–"}</td>
+                <td className="px-2.5 py-2" colSpan={MATRICE_HEADERS.length - 3}>
+                  <span className="font-medium">{eur(e.amountEUR)}</span> ·{" "}
+                  {e.duplicateOfId ? "doublon détecté dans ce lot, compté une seule fois" : "déjà présent dans le fichier maître (traité précédemment)"}
+                  — vérifiez puis incluez si vous voulez quand même l'écrire à nouveau.
                 </td>
+                <td className="px-2.5 py-2 font-mono text-[10px]">{e.docKey}</td>
                 <td className="px-2.5 py-2">
-                  <span className="inline-block rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-600">ignoré</span>
+                  <button
+                    type="button"
+                    onClick={() => onPatch(e.id, { duplicateOfId: null, idempotentSkip: false })}
+                    className="inline-block whitespace-nowrap rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-700 hover:bg-ink-300"
+                    title="Ce justificatif a été détecté comme déjà traité ou doublon. Cliquez pour l'inclure quand même dans l'écriture."
+                  >
+                    inclure quand même
+                  </button>
                 </td>
               </tr>
             ))}
             {active.length === 0 && excluded.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-2.5 py-8 text-center text-ink-400">
+                <td colSpan={MATRICE_HEADERS.length + 4} className="px-2.5 py-8 text-center text-ink-400">
                   Aucun justificatif exploitable dans ce lot.
                 </td>
               </tr>
@@ -590,7 +807,7 @@ function MasterPreview({
                   <td className="px-2 py-1.5 text-ink-500">{r.sheetName}</td>
                   <td className="px-2 py-1.5">{r.date || "–"}</td>
                   <td className="px-2 py-1.5 text-ink-700">{r.vendor || "–"}</td>
-                  <td className="px-2 py-1.5 text-ink-600">{r.category || "–"}</td>
+                  <td className="px-2 py-1.5 text-ink-600">{categoryLabel(r.category)}</td>
                   <td className="px-2 py-1.5 font-medium text-ink-900">{eur(r.amountEUR)}</td>
                 </tr>
               ))}
@@ -633,6 +850,9 @@ function DoneCard({
               Google Sheet non synchronisé (le connecteur n&apos;est pas encore configuré)
             </span>
           )}
+        </p>
+        <p className="mt-2 text-[11px] text-emerald-700">
+          Téléchargez le fichier à tout moment avec le bouton « Télécharger le Google Sheet » en haut de page.
         </p>
       </div>
       <button onClick={onReset} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">

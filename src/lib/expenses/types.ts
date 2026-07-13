@@ -32,19 +32,49 @@ export const CATEGORY_KEYS = [
 
 export type CategoryKey = (typeof CATEGORY_KEYS)[number];
 
-/** Category key -> { amount column letter, French label for the UI }. */
+/**
+ * Category key -> { amount column letter, label matching the Matrice's own
+ * row-13 header text byte-for-byte (curly apostrophe in "avion", embedded
+ * newline in "Train / Métro") so anything shown in the UI reads exactly like
+ * the sheet Nathalie sees.
+ */
 export const CATEGORY_COLUMN: Record<CategoryKey, { col: string; label: string }> = {
-  flight: { col: "F", label: "Billet d'avion" },
+  flight: { col: "F", label: "Billet d’avion" },
   hotel: { col: "G", label: "Hébergement" },
-  train: { col: "H", label: "Train / Métro" },
+  train: { col: "H", label: "Train \n Métro" },
   taxi: { col: "I", label: "Taxi" },
   toll: { col: "J", label: "Autoroute" },
   parking: { col: "K", label: "Parking" },
   meals: { col: "L", label: "Repas et pourboires" },
   conference: { col: "M", label: "Conférences et séminaires" },
-  mileage: { col: "N", label: "Kilomètres" },
+  // Distance isn't captured by extraction (no km field) — write the flat euro
+  // amount straight into the reimbursement column, not the distance column,
+  // so it isn't double-counted by the Kilométrage*N formula in excel.ts.
+  mileage: { col: "O", label: "Remboursement du kilométrage" },
   misc: { col: "P", label: "Divers" },
 };
+
+/** Full Matrice row-13 header set, in sheet order (B..S) — for previews/exports. */
+export const MATRICE_HEADERS = [
+  "Date",
+  "Etude",
+  "Objet",
+  "Lieu du déplacement",
+  "Billet d’avion",
+  "Hébergement",
+  "Train \n Métro",
+  "Taxi",
+  "Autoroute",
+  "Parking",
+  "Repas et pourboires",
+  "Conférences et séminaires",
+  "Kilomètres",
+  "Remboursement du kilométrage",
+  "Divers",
+  "TVA récupérable",
+  "Devise de dépense",
+  "Total",
+] as const;
 
 // Fixed Matrice geometry (PRD Excel appendix, verified against the real file).
 export const MATRICE = {
@@ -107,6 +137,13 @@ export const ReceiptExtractionSchema = z.object({
   category: z.enum(CATEGORY_KEYS).nullable().catch(null),
   /** Recoverable VAT ONLY if explicitly itemized; else null (never computed). */
   vatRecoverable: z.number().nullable().catch(null),
+  /**
+   * Distance driven in km, ONLY when a real distance figure is printed on the
+   * document (mileage claim showing km, not a euro amount). null otherwise —
+   * never estimated. Used to compute the reimbursement via the workbook's own
+   * `Kilométrage` rate cell instead of requiring a pre-computed euro amount.
+   */
+  distanceKm: z.number().nullable().catch(null),
   docNature: z.enum(DOC_NATURES).nullable().catch(null),
   paymentProofPresent: z.boolean().catch(false),
   /** Invoice / ticket / booking number — used for dedup. */
@@ -192,6 +229,8 @@ export interface ProcessedExpense {
   location: string | null;
   purpose: string | null;
   passengers: string[];
+  /** Study/project code (Matrice "Etude" column) — not extracted, Nathalie fills it in manually during review. */
+  etude: string | null;
 
   // amounts
   originalAmount: number | null;
@@ -199,6 +238,10 @@ export interface ProcessedExpense {
   vatRecoverable: number | null;
   amountEUR: number | null;
   fx: FxResult | null;
+  /** Real distance in km when the doc shows one (mileage only); else null. */
+  distanceKm: number | null;
+  /** true when amountEUR for a mileage row was computed (distanceKm × rate) rather than read directly off the document. */
+  mileageComputed: boolean;
 
   // routing
   traveler: string;

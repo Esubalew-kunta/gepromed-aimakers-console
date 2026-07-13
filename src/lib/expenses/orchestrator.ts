@@ -15,6 +15,7 @@ import {
   resolveSheetName,
   managedSheetNames,
   flattenTables,
+  readMileageRate,
   type LedgerEntry,
   type SheetRow,
 } from "./excel";
@@ -40,6 +41,7 @@ export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> 
   getTemplateSheet(wb); // throws early if it's not the Matrice file
   const ledger = readLedger(wb);
   const ledgerKeys = new Set(ledger.map((e) => e.docKey));
+  const mileageRate = readMileageRate(wb);
 
   const expenses: ProcessedExpense[] = [];
   const skipped: { file: string; reason: string }[] = [];
@@ -76,7 +78,7 @@ export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> 
         fxError = "Conversion impossible : montant ou date manquant — à vérifier";
       }
 
-      const exp = buildProcessed({ extraction: r, deposit, sourceFile: file.name, fileHash: file.hash, fx, fxError, id });
+      const exp = buildProcessed({ extraction: r, deposit, sourceFile: file.name, fileHash: file.hash, fx, fxError, id, mileageRate });
       exp.docKey = computeDocKey(r, file.hash, idx);
       exp.sheetName = sanitizeSheetName(exp.sheetName);
       expenses.push(exp);
@@ -90,7 +92,7 @@ export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> 
   return summarize(runId, deposit.description ? "master.xlsx" : "master.xlsx", expenses, skipped);
 }
 
-function summarize(
+export function summarize(
   runId: string,
   masterFileName: string,
   expenses: ProcessedExpense[],
@@ -136,6 +138,8 @@ function toSheetRow(e: ProcessedExpense): SheetRow {
     vatRecoverable: e.vatRecoverable,
     originalCurrency: e.originalCurrency,
     fx: e.fx,
+    distanceKm: e.distanceKm,
+    etude: e.etude,
   };
 }
 

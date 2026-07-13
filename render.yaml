@@ -39,3 +39,14 @@ services:
         value: gepromed-manager
       # Optional integrations are intentionally left unset — the app
       # runs in fully-mocked DEMO MODE without them.
+      #
+      # Expense-notes -> Google Sheet mirror (n8n). Set these in the Render
+      # dashboard (Environment tab) to enable Google Sheet sync/export/clear;
+      # without them, expenses still commit to the Excel master + Supabase,
+      # just without the Sheet mirror.
+      - key: EXPENSE_SHEET_WEBHOOK_URL
+        sync: false
+      - key: EXPENSE_SHEET_EXPORT_URL
+        sync: false
+      - key: EXPENSE_SHEET_CLEAR_URL
+        sync: false

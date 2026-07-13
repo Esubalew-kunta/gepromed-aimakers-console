@@ -7,7 +7,7 @@ import { Icon } from "./Icon";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "home" },
-  { href: "/trainees", label: "Trainees management", icon: "users" },
+  { href: "/trainees", label: "Gestion des Trainees", icon: "users" },
   { href: "/courses", label: "Course management", icon: "book" },
   { href: "/engineering", label: "Engineering", icon: "workflow" },
   { href: "/contracts", label: "Contract templates", icon: "clipboard-check" },

@@ -47,7 +47,6 @@ export const DEFAULT_PARCOURS: Parcours = "bootcamp";
 
 export type HelpMeSeeStage =
   | "lead"
-  | "enrollment_form"
   | "dates_validation"
   | "invoice"
   | "elearning_check"
@@ -75,7 +74,6 @@ export type ExitStatus = typeof NOT_INTERESTED;
 
 export const HELPMESEE_STAGES: readonly HelpMeSeeStage[] = [
   "lead",
-  "enrollment_form",
   "dates_validation",
   "invoice",
   "elearning_check",
@@ -101,8 +99,7 @@ export const BOOTCAMP_STAGES: readonly BootcampStage[] = [
  * ------------------------------------------------------------------ */
 
 const HELPMESEE_STAGE_LABEL: Record<HelpMeSeeStage, string> = {
-  lead: "Lead à suivre",
-  enrollment_form: "Enrollment form à compléter",
+  lead: "Trainee à suivre",
   dates_validation: "Dates à valider",
   invoice: "Facture à payer",
   elearning_check: "E-learning à vérifier",
@@ -112,7 +109,7 @@ const HELPMESEE_STAGE_LABEL: Record<HelpMeSeeStage, string> = {
 };
 
 const BOOTCAMP_STAGE_LABEL: Record<BootcampStage, string> = {
-  lead: "Lead à suivre",
+  lead: "Trainee à suivre",
   prerequisites: "Prérequis à vérifier",
   pre_registration: "Pré-inscription confirmée",
   deposit_contract: "Caution / contrat reçus",
@@ -125,23 +122,22 @@ const BOOTCAMP_STAGE_LABEL: Record<BootcampStage, string> = {
 
 /** Short caps used under the workflow stepper nodes. */
 const HELPMESEE_STAGE_SHORT: Record<HelpMeSeeStage, string> = {
-  lead: "Lead",
-  enrollment_form: "Form",
+  lead: "À suivre",
   dates_validation: "Dates",
   invoice: "Facture",
-  elearning_check: "E-learn",
-  simulator_access: "Simu",
+  elearning_check: "E-learning",
+  simulator_access: "Simulateur",
   confirmed: "Confirmé",
   done: "Terminé",
 };
 
 const BOOTCAMP_STAGE_SHORT: Record<BootcampStage, string> = {
-  lead: "Lead",
+  lead: "À suivre",
   prerequisites: "Prérequis",
   pre_registration: "Pré-insc.",
   deposit_contract: "Caution",
   practical_info: "Infos",
-  elearning_sent: "E-learn",
+  elearning_sent: "E-learning",
   confirmed: "Confirmé",
   deposit_refunded: "Remb.",
   done: "Terminé",
@@ -149,7 +145,6 @@ const BOOTCAMP_STAGE_SHORT: Record<BootcampStage, string> = {
 
 const HELPMESEE_STAGE_TONE: Record<HelpMeSeeStage, string> = {
   lead: "bg-amber-50 text-amber-700",
-  enrollment_form: "bg-sky-50 text-sky-700",
   dates_validation: "bg-indigo-50 text-indigo-700",
   invoice: "bg-orange-50 text-orange-700",
   elearning_check: "bg-violet-50 text-violet-700",
@@ -170,27 +165,30 @@ const BOOTCAMP_STAGE_TONE: Record<BootcampStage, string> = {
   done: "bg-ink-100 text-ink-600",
 };
 
-/** Label on the advance button = action that moves to the NEXT stage (null = terminal). */
+/**
+ * Advance-button label = confirmation that THIS step's milestone is done, which
+ * moves the trainee to the next step (null = terminal). Written as consistent
+ * past-tense confirmations so every step reads distinctly.
+ */
 const HELPMESEE_ADVANCE_LABEL: Record<HelpMeSeeStage, string | null> = {
-  lead: "Enrollment form complété",
-  enrollment_form: "Valider les dates",
-  dates_validation: "Facture payée",
-  invoice: "Vérifier l'e-learning",
-  elearning_check: "Envoyer accès simulateur",
-  simulator_access: "Confirmer la place",
-  confirmed: "Marquer terminé",
+  lead: "Démarrer le suivi",
+  dates_validation: "Dates validées",
+  invoice: "Facture payée",
+  elearning_check: "E-learning vérifié",
+  simulator_access: "Accès simulateur envoyé",
+  confirmed: "Formation effectuée",
   done: null,
 };
 
 const BOOTCAMP_ADVANCE_LABEL: Record<BootcampStage, string | null> = {
-  lead: "Vérifier les prérequis",
-  prerequisites: "Confirmer la pré-inscription",
-  pre_registration: "Caution / contrat reçus",
-  deposit_contract: "Envoyer infos pratiques",
-  practical_info: "Envoyer l'e-learning",
-  elearning_sent: "Confirmer la place",
-  confirmed: "Caution remboursée",
-  deposit_refunded: "Marquer terminé",
+  lead: "Démarrer le suivi",
+  prerequisites: "Prérequis conformes",
+  pre_registration: "Caution + contrat reçus",
+  deposit_contract: "Infos pratiques envoyées",
+  practical_info: "E-learning envoyé",
+  elearning_sent: "Place confirmée",
+  confirmed: "Présence confirmée",
+  deposit_refunded: "Clôturer le parcours",
   done: null,
 };
 
@@ -332,7 +330,7 @@ export const LEAD_STAGES: LeadStage[] = [
 ];
 
 export const STAGE_LABEL: Record<LeadStage, string> = {
-  lead: "Lead à suivre",
+  lead: "Trainee à suivre",
   deposit_paid: "Acompte payé",
   contract_signed: "Contrat signé",
   confirmed: "Confirmé",
@@ -506,19 +504,32 @@ export interface Lead {
 }
 
 export interface LeadStats {
+  /** All trainees. */
   total: number;
-  toFollow: number;
+  /** Active — still in the pipeline (not confirmed, not done, not exited). */
+  active: number;
+  /** Seat confirmed. */
   confirmed: number;
-  potentialDeposits: number;
+  /** Completed the parcours. */
+  completed: number;
 }
 
+/**
+ * Pipeline funnel that works for BOTH parcours: Total → In progress →
+ * Confirmed → Completed. (Replaces the old "to follow" — which only counted the
+ * very first stage — and the deposit sum, which was wrong for HelpMeSee since
+ * foundation trainees have no deposit.)
+ */
 export function computeStats(leads: Lead[]): LeadStats {
   return {
     total: leads.length,
-    toFollow: leads.filter((l) => l.stage === "lead").length,
+    active: leads.filter(
+      (l) =>
+        l.interest !== "not_interested" &&
+        l.stage !== "confirmed" &&
+        l.stage !== "done",
+    ).length,
     confirmed: leads.filter((l) => l.stage === "confirmed").length,
-    potentialDeposits: leads
-      .filter((l) => l.interest !== "not_interested")
-      .reduce((sum, l) => sum + (l.trainings?.deposit_eur ?? 0), 0),
+    completed: leads.filter((l) => l.stage === "done").length,
   };
 }

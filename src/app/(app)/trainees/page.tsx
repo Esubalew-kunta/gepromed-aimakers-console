@@ -8,14 +8,6 @@ import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function euro(n: number): string {
-  return n.toLocaleString("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  });
-}
-
 export default async function LeadsPage() {
   const configured = isSupabaseConfigured();
   const user = await getSessionUser();
@@ -28,23 +20,23 @@ export default async function LeadsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Training pipeline"
-        title="Trainees management"
-        description="Two participant parcours, each with its own steps. HelpMeSee (foundation): lead → enrollment form → dates → facture → e-learning → accès simulateur → confirmé → terminé. Bootcamps & Workshops (Gepromed): lead → prérequis → pré-inscription → caution/contrat → infos pratiques → e-learning → confirmé → caution remboursée → terminé. Automates Nicole's manual, Excel-based follow-up."
+        eyebrow="Pipeline de formation"
+        title="Gestion des Trainees"
+        description="Deux parcours Trainee, chacun avec ses propres étapes. HelpMeSee (fondation, 7 étapes) : trainee → dates → facture → e-learning (verrou) → accès simulateur → confirmé → terminé. Bootcamps & Workshops (Gepromed, 9 étapes) : trainee → prérequis → pré-inscription → caution/contrat → infos pratiques → e-learning → confirmé → caution remboursée → terminé. Automatise le suivi manuel basé sur Excel."
       />
 
       {!configured ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Supabase isn&apos;t configured, set the keys in <code>.env.local</code> to load live leads.
+          Supabase n&apos;est pas configuré : renseignez les clés dans <code>.env.local</code> pour charger les Trainees en direct.
         </div>
       ) : null}
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Requests" value={`${stats.total}`} icon="users" />
-        <Kpi label="Leads to follow up" value={`${stats.toFollow}`} icon="clock" tone="text-amber-600" />
-        <Kpi label="Confirmed" value={`${stats.confirmed}`} icon="check" tone="text-emerald-600" />
-        <Kpi label="Potential deposits" value={euro(stats.potentialDeposits)} icon="database" tone="text-brand-700" />
+        <Kpi label="Trainees" value={`${stats.total}`} icon="users" />
+        <Kpi label="En cours" value={`${stats.active}`} icon="clock" tone="text-amber-600" />
+        <Kpi label="Confirmés" value={`${stats.confirmed}`} icon="check" tone="text-emerald-600" />
+        <Kpi label="Terminés" value={`${stats.completed}`} icon="clipboard-check" tone="text-brand-700" />
       </div>
 
       <div className="mt-8">

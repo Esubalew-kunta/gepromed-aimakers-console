@@ -12,11 +12,15 @@ import type { ContractTemplate } from "@/lib/contracts-shared";
 
 export function ContractTemplates({
   templates,
+  courses,
   publicBase,
 }: {
   templates: ContractTemplate[];
+  courses: { id: string; title: string }[];
   publicBase: string | null;
 }) {
+  const courseName = (id: string) =>
+    courses.find((c) => c.id === id)?.title ?? "Cours inconnu";
   const [state, action, pending] = useActionState<ContractFormState, FormData>(
     uploadTemplate,
     {},
@@ -50,8 +54,26 @@ export function ContractTemplates({
             />
           </div>
         </div>
+        <div>
+          <label className="label">Cours couverts par ce contrat</label>
+          {courses.length === 0 ? (
+            <p className="text-xs text-ink-400">Aucun cours disponible.</p>
+          ) : (
+            <div className="grid max-h-40 gap-1.5 overflow-y-auto rounded-lg border border-ink-100 p-3 sm:grid-cols-2">
+              {courses.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm text-ink-700">
+                  <input type="checkbox" name="course_ids" value={c.id} className="h-4 w-4" />
+                  <span className="truncate">{c.title}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="mt-1 text-xs text-ink-400">
+            Le système attachera automatiquement ce contrat aux Trainees inscrits à ces cours.
+          </p>
+        </div>
         <label className="flex items-center gap-2 text-sm text-ink-600">
-          <input type="checkbox" name="is_default" className="h-4 w-4" /> Set as the global default
+          <input type="checkbox" name="is_default" className="h-4 w-4" /> Définir comme contrat par défaut (utilisé si aucun cours ne correspond)
         </label>
         {state.error ? (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>
@@ -79,9 +101,16 @@ export function ContractTemplates({
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-ink-900">{t.name}</span>
                   {t.is_default ? (
-                    <span className="badge bg-brand-50 text-brand-700">Default</span>
+                    <span className="badge bg-brand-50 text-brand-700">Par défaut</span>
                   ) : null}
                 </div>
+                <p className="mt-1 text-xs text-ink-500">
+                  {t.course_ids && t.course_ids.length > 0
+                    ? `Cours : ${t.course_ids.map(courseName).join(", ")}`
+                    : t.is_default
+                      ? "S'applique à tous les cours sans contrat dédié"
+                      : "Aucun cours attaché"}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {publicBase && t.file_url ? (

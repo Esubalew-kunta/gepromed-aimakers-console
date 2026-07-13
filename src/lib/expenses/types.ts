@@ -85,39 +85,49 @@ const ConfidenceField = z.object({
 });
 export type ConfidenceField = z.infer<typeof ConfidenceField>;
 
+/**
+ * Tolerant per-receipt schema. Every field uses `.catch(...)` so a missing or
+ * malformed value from a less-reliable model (e.g. gpt-4o-mini omitting the
+ * nested `confidence` object or a nullable field, or returning an out-of-enum
+ * category) degrades to a safe default INSTEAD of rejecting the whole receipt.
+ * The row still surfaces for Nathalie's review (flagged), never silently lost.
+ */
+const conf = () => z.number().catch(0.5);
 export const ReceiptExtractionSchema = z.object({
   /** Issue date of the receipt, ISO yyyy-mm-dd, or null if unreadable. */
-  issueDate: z.string().nullable(),
+  issueDate: z.string().nullable().catch(null),
   /** Issue date exactly as printed (for audit / ambiguity checks). */
-  issueDateRaw: z.string().nullable(),
+  issueDateRaw: z.string().nullable().catch(null),
   /** Total actually PAID, TTC (never HT). null if unclear. */
-  amountTTC: z.number().nullable(),
+  amountTTC: z.number().nullable().catch(null),
   /** ISO 4217 code of the amount actually paid (EUR, USD, JPY, DKK, AED...). */
-  currency: z.string().nullable(),
-  vendor: z.string().nullable(),
+  currency: z.string().nullable().catch(null),
+  vendor: z.string().nullable().catch(null),
   /** One of the fixed category keys, or null if it cannot be determined. */
-  category: z.enum(CATEGORY_KEYS).nullable(),
+  category: z.enum(CATEGORY_KEYS).nullable().catch(null),
   /** Recoverable VAT ONLY if explicitly itemized; else null (never computed). */
-  vatRecoverable: z.number().nullable(),
-  docNature: z.enum(DOC_NATURES).nullable(),
-  paymentProofPresent: z.boolean(),
+  vatRecoverable: z.number().nullable().catch(null),
+  docNature: z.enum(DOC_NATURES).nullable().catch(null),
+  paymentProofPresent: z.boolean().catch(false),
   /** Invoice / ticket / booking number — used for dedup. */
-  docNumber: z.string().nullable(),
-  location: z.string().nullable(),
+  docNumber: z.string().nullable().catch(null),
+  location: z.string().nullable().catch(null),
   /** Traveler name(s) if printed on the document. */
-  passengers: z.array(z.string()).default([]),
+  passengers: z.array(z.string()).catch([]),
   /** Purpose/motif if inferable from the doc (else from deposit message). */
-  purpose: z.string().nullable(),
+  purpose: z.string().nullable().catch(null),
   /** Per-field confidence 0..1 for the key fields. */
-  confidence: z.object({
-    issueDate: z.number().min(0).max(1),
-    amountTTC: z.number().min(0).max(1),
-    currency: z.number().min(0).max(1),
-    vendor: z.number().min(0).max(1),
-    category: z.number().min(0).max(1),
-  }),
+  confidence: z
+    .object({
+      issueDate: conf(),
+      amountTTC: conf(),
+      currency: conf(),
+      vendor: conf(),
+      category: conf(),
+    })
+    .catch({ issueDate: 0.5, amountTTC: 0.5, currency: 0.5, vendor: 0.5, category: 0.5 }),
   /** Model-raised flags (multi-passenger, several amounts, poor scan, etc.). */
-  alerts: z.array(z.string()).default([]),
+  alerts: z.array(z.string()).catch([]),
 });
 export type ReceiptExtraction = z.infer<typeof ReceiptExtractionSchema>;
 

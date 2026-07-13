@@ -44,7 +44,6 @@ const STAGE_TS_FIELD: Record<Stage, keyof Lead | null> = {
   lead: null,
   confirmed: "confirmed_at",
   done: "done_at",
-  enrollment_form: "enrollment_form_at",
   dates_validation: "dates_validated_at",
   invoice: "invoice_paid_at",
   elearning_check: "elearning_checked_at",
@@ -82,31 +81,89 @@ type Tab = Stage | "all" | "not_interested";
 type ParcoursFilter = Parcours | "all";
 
 /**
- * Per-step guidance shown in the drawer's "Cette étape" panel — what the step
- * means and what advancing triggers in the background (email / contract /
- * gate). Makes each stage read differently instead of a generic screen.
+ * Per-step guidance for the drawer's focused "Current step" card:
+ *  • what      — what this step means
+ *  • waitingFor— the milestone we're waiting on before it can advance
+ *  • onAdvance — what confirming/advancing triggers in the background
+ * Makes every stage read distinctly instead of a generic screen.
  */
-const STAGE_HELP: Record<Parcours, Partial<Record<Stage, { what: string; onAdvance: string }>>> = {
+type StepHelp = { what: string; waitingFor: string; onAdvance: string };
+const STAGE_HELP: Record<Parcours, Partial<Record<Stage, StepHelp>>> = {
   helpmesee: {
-    lead: { what: "Demande reçue via la fondation. Envoyez le formulaire d'inscription HelpMeSee.", onAdvance: "Envoie l'email « formulaire d'inscription »." },
-    enrollment_form: { what: "En attente du formulaire d'inscription HelpMeSee complété.", onAdvance: "Envoie l'email « validation des dates »." },
-    dates_validation: { what: "Validez les dates de formation avec un instructeur.", onAdvance: "Envoie l'email « facture »." },
-    invoice: { what: "Facture à régler (en une ou plusieurs fois).", onAdvance: "Envoie l'email « modules e-learning »." },
-    elearning_check: { what: "GATE — les modules e-learning de la fondation doivent être vérifiés AVANT l'accès simulateur.", onAdvance: "Envoie l'email « accès simulateur + infos pratiques »." },
-    simulator_access: { what: "Identifiants simulateur + infos pratiques envoyés.", onAdvance: "Confirme la place du participant." },
-    confirmed: { what: "Prêt — formation planifiée.", onAdvance: "Envoie le questionnaire de satisfaction et clôture." },
-    done: { what: "Parcours terminé — questionnaire de satisfaction envoyé.", onAdvance: "" },
+    lead: {
+      what: "Trainee référencé par la fondation HelpMeSee.",
+      waitingFor: "Prise en charge du dossier par l'équipe.",
+      onAdvance: "Démarre le suivi → email « validation des dates ».",
+    },
+    dates_validation: {
+      what: "Validation des dates de formation avec un instructeur.",
+      waitingFor: "Dates confirmées avec un instructeur.",
+      onAdvance: "Confirme les dates → email « facture émise ».",
+    },
+    invoice: {
+      what: "Facture émise (prise en charge par la fondation).",
+      waitingFor: "Règlement de la facture par la fondation.",
+      onAdvance: "Marque la facture payée → email « modules e-learning ».",
+    },
+    elearning_check: {
+      what: "GATE — les modules e-learning de la fondation (externes à Gepromed) doivent être vérifiés AVANT l'accès simulateur.",
+      waitingFor: "Preuve de complétion des modules fondation.",
+      onAdvance: "Débloque l'accès → email « accès simulateur + infos pratiques ».",
+    },
+    simulator_access: {
+      what: "Identifiants simulateur + infos pratiques envoyés.",
+      waitingFor: "Prêt à confirmer la place.",
+      onAdvance: "Confirme la place → email « place confirmée » + LMS.",
+    },
+    confirmed: {
+      what: "Prêt — formation planifiée.",
+      waitingFor: "Déroulement de la formation.",
+      onAdvance: "Clôture → email « questionnaire de satisfaction ».",
+    },
+    done: { what: "Parcours terminé — satisfaction envoyée.", waitingFor: "—", onAdvance: "" },
   },
   bootcamp: {
-    lead: { what: "Nouvelle demande. Vérifiez l'éligibilité aux prérequis.", onAdvance: "Passe à l'étape prérequis." },
-    prerequisites: { what: "GATE — vérifiez spécialité / statut / pays. Bootcamp = chirurgie vasculaire uniquement.", onAdvance: "Si conforme : email de pré-inscription + contrat attaché automatiquement." },
-    pre_registration: { what: "Caution 200 € + contrat d'engagement demandés (le contrat est attaché automatiquement).", onAdvance: "Marque la caution / le contrat comme reçus." },
-    deposit_contract: { what: "Caution et contrat reçus.", onAdvance: "Envoie l'email « infos pratiques » (logo sponsor ou tarif — Règle 1)." },
-    practical_info: { what: "Infos pratiques envoyées (J-30).", onAdvance: "Envoie l'email « accès e-learning » (LMS Gepromed)." },
-    elearning_sent: { what: "Accès e-learning envoyés (J-15/7).", onAdvance: "Confirme la place du participant." },
-    confirmed: { what: "Prêt pour l'événement. Confirmez la présence pour conditionner le remboursement.", onAdvance: "Caution remboursée (si présent en intégralité) ou clôture." },
-    deposit_refunded: { what: "Caution remboursée.", onAdvance: "Envoie les modules finaux + questionnaire de satisfaction." },
-    done: { what: "Parcours terminé — modules finaux + satisfaction.", onAdvance: "" },
+    lead: {
+      what: "Nouvelle demande d'inscription reçue.",
+      waitingFor: "Prise en charge et vérification des prérequis.",
+      onAdvance: "Démarre le suivi → étape prérequis.",
+    },
+    prerequisites: {
+      what: "GATE — vérifiez spécialité / statut / pays (Bootcamp = chirurgie vasculaire) et le contrat.",
+      waitingFor: "Décision d'éligibilité (conforme / non conforme).",
+      onAdvance: "Si conforme → email « caution 200 € + contrat » et contrat attaché automatiquement.",
+    },
+    pre_registration: {
+      what: "Caution 200 € + contrat d'engagement demandés (contrat attaché).",
+      waitingFor: "Caution payée ET contrat signé reçus.",
+      onAdvance: "Confirme la réception → email « caution et contrat reçus ».",
+    },
+    deposit_contract: {
+      what: "Caution et contrat reçus.",
+      waitingFor: "Envoi des infos pratiques (J-30).",
+      onAdvance: "Email « infos pratiques » (logo sponsor OU tarif — Règle 1).",
+    },
+    practical_info: {
+      what: "Infos pratiques envoyées (J-30).",
+      waitingFor: "Envoi de l'accès e-learning (J-15/7).",
+      onAdvance: "Email « accès e-learning » (LMS Gepromed).",
+    },
+    elearning_sent: {
+      what: "Accès e-learning envoyés (J-15/7).",
+      waitingFor: "Prêt à confirmer la place.",
+      onAdvance: "Confirme la place → email « place confirmée » + LMS.",
+    },
+    confirmed: {
+      what: "Prêt pour l'événement. La présence conditionne le remboursement.",
+      waitingFor: "Déroulement de l'événement + confirmation de présence.",
+      onAdvance: "Caution remboursée (si présent en intégralité) sinon clôture.",
+    },
+    deposit_refunded: {
+      what: "Caution remboursée.",
+      waitingFor: "Clôture (modules finaux + satisfaction).",
+      onAdvance: "Email « modules finaux + satisfaction ».",
+    },
+    done: { what: "Parcours terminé — modules finaux + satisfaction.", waitingFor: "—", onAdvance: "" },
   },
 };
 
@@ -418,17 +475,19 @@ export function LeadBoard({
       {/* List (scrollable so long lists don't push the page) */}
       <div className="mb-2 flex items-center justify-between px-1 text-xs text-ink-400">
         <span>
-          {visible.length} of {leads.length} lead{leads.length === 1 ? "" : "s"}
+          {visible.length} sur {leads.length} Trainee{leads.length === 1 ? "" : "s"}
         </span>
       </div>
       <div className="card max-h-[60vh] min-h-[160px] overflow-y-auto">
         {leads.length === 0 ? (
           <p className="p-10 text-center text-ink-400">
-            No leads yet. Submit the registration form on the website to see the
-            pipeline fill up.
+            Aucun Trainee pour l&apos;instant. Soumettez le formulaire
+            d&apos;inscription sur le site pour voir le pipeline se remplir.
           </p>
         ) : visible.length === 0 ? (
-          <p className="p-10 text-center text-ink-400">No leads match your filters.</p>
+          <p className="p-10 text-center text-ink-400">
+            Aucun Trainee ne correspond à vos filtres.
+          </p>
         ) : (
           visible.map((l, i) => (
             <button
@@ -500,13 +559,14 @@ export function LeadBoard({
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label="Lead detail"
+        aria-label="Détail Trainee"
         className={`fixed right-0 top-0 z-50 flex h-screen w-[524px] max-w-[94vw] flex-col bg-white shadow-2xl transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         } motion-reduce:transition-none`}
       >
         {drawerLead ? (
           <LeadDrawer
+            key={drawerLead.id}
             lead={drawerLead}
             isAdmin={isAdmin}
             pending={pending}
@@ -581,6 +641,30 @@ function LeadDrawer({
   const help = STAGE_HELP[parcours][lead.stage];
   const isEligibilityGate = parcours === "bootcamp" && lead.stage === "prerequisites";
   const isElearningGate = parcours === "helpmesee" && lead.stage === "elearning_check";
+
+  // Per-step confirmation: normal steps require the admin to tick the step's
+  // milestone before "advance" enables — a real checklist. Real gates
+  // (eligibility, e-learning) use their own condition instead.
+  const [stepChecked, setStepChecked] = useState(false);
+  const [contractApproved, setContractApproved] = useState(false);
+  useEffect(() => {
+    setStepChecked(false);
+    setContractApproved(false);
+  }, [lead.id, lead.stage]);
+  const advanceEnabled = isElearningGate
+    ? lead.elearning_completed
+    : parcours === "bootcamp" && lead.stage === "pre_registration"
+      ? stepChecked || lead.caution_waived
+      : stepChecked;
+
+  // Eligibility step: auto-match the contract by course (a template whose
+  // course_ids include this trainee's course), else the global default. The DB
+  // trigger applies the same match atomically when the trainee advances.
+  const matchedTemplate = isEligibilityGate
+    ? (templates.find((tt) => tt.course_ids?.includes(lead.training_id ?? "")) ??
+        templates.find((tt) => tt.is_default) ??
+        null)
+    : null;
 
   // Communications timeline: emails recorded on each stage transition, newest first.
   const emails = [...(lead.email_log ?? [])].sort((a, b) =>
@@ -663,76 +747,175 @@ function LeadDrawer({
             </p>
           ) : null}
 
-          {/* Cette étape — what the step means + what advancing triggers */}
+          {/* ---- Current step: meaning · waiting-for · confirm control ---- */}
           {help ? (
-            <div className="mt-4 rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-2.5">
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-                Cette étape
+            <div className="mt-4 rounded-xl border border-brand-100 bg-brand-50/40 p-4">
+              <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-brand-600">
+                Étape actuelle · {stageLabel(parcours, lead.stage)}
               </p>
               <p className="text-[13px] text-ink-700">{help.what}</p>
+              <p className="mt-2 text-[12px] text-ink-500">
+                <span className="font-semibold text-ink-600">En attente de :</span> {help.waitingFor}
+              </p>
+
+              {/* HelpMeSee e-learning HARD GATE toggle */}
+              {isElearningGate ? (
+                <button
+                  onClick={() => run(() => setElearningCompleted(lead.id, !lead.elearning_completed))}
+                  className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                    lead.elearning_completed
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {lead.elearning_completed ? "E-learning vérifié ✓" : "Marquer l'e-learning vérifié"}
+                </button>
+              ) : null}
+
+              {/* Bootcamp pré-inscription: caution waiver exception */}
+              {parcours === "bootcamp" && lead.stage === "pre_registration" ? (
+                <button
+                  onClick={() => run(() => setCautionWaived(lead.id, !lead.caution_waived))}
+                  className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                    lead.caution_waived ? "bg-amber-50 text-amber-700" : "bg-ink-100 text-ink-500"
+                  }`}
+                  title="Exception inscrit tardif : caution 200 € / contrat levés"
+                >
+                  {lead.caution_waived ? "Caution levée (exception)" : "Caution requise"}
+                </button>
+              ) : null}
+
+              {/* Bootcamp confirmé: attendance gates the refund */}
+              {parcours === "bootcamp" && lead.stage === "confirmed" ? (
+                <button
+                  onClick={() => run(() => setAttended(lead.id, !lead.attended))}
+                  className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                    lead.attended ? "bg-emerald-50 text-emerald-700" : "bg-ink-100 text-ink-500"
+                  }`}
+                  title="Formation suivie en intégralité (conditionne le remboursement)"
+                >
+                  {lead.attended ? "Présent · formation suivie" : "Présence non confirmée"}
+                </button>
+              ) : null}
+
+              {/* Eligibility: auto-matched contract — preview + approve */}
+              {isEligibilityGate ? (
+                <div className="mt-3 rounded-lg border border-ink-100 bg-white p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                    Contrat à envoyer (sélection automatique)
+                  </p>
+                  {matchedTemplate ? (
+                    <>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <Icon name="clipboard-check" className="h-4 w-4 text-brand-600" />
+                        <span className="text-[13px] font-semibold text-ink-900">
+                          {matchedTemplate.name}
+                        </span>
+                        {matchedTemplate.is_default ? (
+                          <span className="badge bg-ink-100 text-ink-500">Par défaut</span>
+                        ) : (
+                          <span className="badge bg-emerald-50 text-emerald-700">
+                            Cours correspondant
+                          </span>
+                        )}
+                      </div>
+                      {publicBase && matchedTemplate.file_url ? (
+                        <a
+                          href={`${publicBase}/storage/v1/object/public/contracts/${matchedTemplate.file_url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-ghost mt-2 !py-1.5 !text-xs"
+                        >
+                          Prévisualiser le contrat
+                        </a>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-ink-400">
+                          Aucun fichier à prévisualiser.
+                        </p>
+                      )}
+                      <label className="mt-2.5 flex items-start gap-2 text-[13px] text-ink-700">
+                        <input
+                          type="checkbox"
+                          checked={contractApproved}
+                          onChange={(e) => setContractApproved(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                        />
+                        <span>J&apos;ai vérifié le contrat et j&apos;approuve son envoi.</span>
+                      </label>
+                    </>
+                  ) : (
+                    <p className="mt-1.5 text-[12px] text-red-600">
+                      Aucun contrat disponible pour ce cours. Ajoutez-en un dans « Contrats ».
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {/* Confirmation checkbox for normal (non-gate) steps */}
+              {!isEligibilityGate && !isElearningGate && advance ? (
+                <label className="mt-3 flex items-start gap-2 text-[13px] text-ink-700">
+                  <input
+                    type="checkbox"
+                    checked={stepChecked}
+                    onChange={(e) => setStepChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span>Confirmer : {help.waitingFor}</span>
+                </label>
+              ) : null}
+
+              {/* Primary action */}
+              <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                {isEligibilityGate ? (
+                  <>
+                    <button
+                      onClick={() => run(() => verifyEligibility(lead.id, true))}
+                      disabled={!matchedTemplate || !contractApproved}
+                      title={
+                        !matchedTemplate
+                          ? "Aucun contrat disponible pour ce cours"
+                          : !contractApproved
+                            ? "Vérifiez et approuvez le contrat ci-dessus"
+                            : undefined
+                      }
+                      className="btn-primary !py-2 !text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Prérequis conformes →
+                    </button>
+                    <button
+                      onClick={() => run(() => verifyEligibility(lead.id, false))}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                    >
+                      Prérequis non conformes
+                    </button>
+                  </>
+                ) : advance ? (
+                  <button
+                    onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
+                    disabled={!advanceEnabled}
+                    title={!advanceEnabled ? "Confirmez d'abord l'étape ci-dessus" : undefined}
+                    className="btn-primary !py-2 !text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {advanceText} →
+                  </button>
+                ) : (
+                  <span className="badge bg-emerald-50 text-emerald-700">
+                    <Icon name="check" className="h-3.5 w-3.5" /> Parcours terminé
+                  </span>
+                )}
+              </div>
+
               {help.onAdvance ? (
-                <p className="mt-1 text-[12px] text-ink-500">→ {help.onAdvance}</p>
+                <p className="mt-2 text-[12px] text-ink-500">→ {help.onAdvance}</p>
               ) : null}
             </div>
           ) : null}
 
-          {/* HelpMeSee e-learning HARD GATE: verify before simulator access */}
-          {isElearningGate ? (
-            <div className="mt-3">
-              <button
-                onClick={() => run(() => setElearningCompleted(lead.id, !lead.elearning_completed))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
-                  lead.elearning_completed
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-amber-50 text-amber-700"
-                }`}
-              >
-                {lead.elearning_completed
-                  ? "E-learning vérifié ✓"
-                  : "Marquer l'e-learning vérifié"}
-              </button>
-            </div>
-          ) : null}
-
-          <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            {isEligibilityGate ? (
-              <>
-                <button
-                  onClick={() => run(() => verifyEligibility(lead.id, true))}
-                  className="btn-primary !py-2 !text-sm"
-                >
-                  Prérequis conformes →
-                </button>
-                <button
-                  onClick={() => run(() => verifyEligibility(lead.id, false))}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
-                >
-                  Prérequis non conformes
-                </button>
-              </>
-            ) : advance ? (
-              <button
-                onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
-                disabled={isElearningGate && !lead.elearning_completed}
-                title={
-                  isElearningGate && !lead.elearning_completed
-                    ? "Vérifiez d'abord les modules e-learning"
-                    : undefined
-                }
-                className="btn-primary !py-2 !text-sm disabled:opacity-50"
-              >
-                {advanceText} →
-              </button>
-            ) : (
-              <span className="badge bg-emerald-50 text-emerald-700">
-                <Icon name="check" className="h-3.5 w-3.5" /> Parcours terminé
-              </span>
-            )}
+          {/* Secondary controls: interest · reminders · exit */}
+          <div className="mt-3 flex flex-wrap items-center gap-2.5">
             <select
               value={lead.interest}
-              onChange={(e) =>
-                run(() => setInterest(lead.id, e.target.value as InterestLevel))
-              }
+              onChange={(e) => run(() => setInterest(lead.id, e.target.value as InterestLevel))}
               className="rounded-full border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700"
             >
               {INTEREST_LEVELS.map((i) => (
@@ -762,73 +945,37 @@ function LeadDrawer({
               </button>
             ) : null}
           </div>
-
-          {/* Bootcamp SOP controls: caution waiver + attendance (gates the refund) */}
-          {parcours === "bootcamp" ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2.5">
-              <button
-                onClick={() => run(() => setCautionWaived(lead.id, !lead.caution_waived))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
-                  lead.caution_waived ? "bg-amber-50 text-amber-700" : "bg-ink-100 text-ink-500"
-                }`}
-                title="Exception inscrit tardif : caution 200€ / contrat levés"
-              >
-                {lead.caution_waived ? "Caution levée" : "Caution requise"}
-              </button>
-              <button
-                onClick={() => run(() => setAttended(lead.id, !lead.attended))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
-                  lead.attended ? "bg-emerald-50 text-emerald-700" : "bg-ink-100 text-ink-500"
-                }`}
-                title="Formation suivie en intégralité (conditionne le remboursement de la caution)"
-              >
-                {lead.attended ? "Présent · formation suivie" : "Présence non confirmée"}
-              </button>
-            </div>
-          ) : null}
         </div>
 
-        {/* Session & logistics */}
+        {/* Session & logistique */}
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Session &amp; logistics
+            Session &amp; logistique
           </p>
           <dl className="grid grid-cols-[104px_1fr] gap-x-3 gap-y-1.5 text-[13px]">
             <dt className="text-ink-400">Session</dt>
             <dd className="text-ink-700">
               {t?.title.fr ?? lead.training_title_snapshot ?? "–"}
             </dd>
-            <dt className="text-ink-400">When</dt>
+            <dt className="text-ink-400">Dates</dt>
             <dd className="text-ink-700">
               {t ? `${fmtRange(t.start_date, t.end_date)} · ${t.city}` : "–"}
             </dd>
-            <dt className="text-ink-400">Price</dt>
+            <dt className="text-ink-400">Tarif</dt>
             <dd className="text-ink-700">
-              {t ? `${euro(t.price_eur)} · deposit ${euro(t.deposit_eur)}` : "–"}
+              {t
+                ? parcours === "helpmesee"
+                  ? `${euro(t.price_eur)} · pris en charge par la fondation`
+                  : `${euro(t.price_eur)} · caution ${euro(t.deposit_eur)}`
+                : "–"}
             </dd>
-            <dt className="text-ink-400">Comms</dt>
-            <dd className="text-ink-700">
-              {t?.is_sponsored
-                ? `Sponsorisé : ${
-                    (t.sponsors ?? []).map((s) => s.name).filter(Boolean).join(", ") || "labo(s)"
-                  }`
-                : t
-                  ? `Tarif participant : ${euro(t.price_eur)}`
-                  : "–"}
-            </dd>
-            <dt className="text-ink-400">Diet</dt>
+            <dt className="text-ink-400">Régime</dt>
             <dd className="text-ink-700">{lead.dietary || "–"}</dd>
-            <dt className="text-ink-400">Arrival</dt>
-            <dd className="text-ink-700">{lead.arrival || "–"}</dd>
-            <dt className="text-ink-400">Extras</dt>
-            <dd className="text-ink-700">
-              Accommodation {lead.needs_accommodation ? "Yes" : "No"} · e-learning{" "}
-              {lead.elearning_access ? "Yes" : "No"}
-            </dd>
           </dl>
         </div>
 
-        {/* Financement / sponsor (per-lead, from the register form) */}
+        {/* Financement / sponsor — Bootcamp only (HelpMeSee is foundation-funded) */}
+        {parcours === "bootcamp" ? (
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
             Financement
@@ -864,13 +1011,14 @@ function LeadDrawer({
               <div className="flex-1">
                 <p className="text-[13px] font-semibold text-ink-900">Autofinancé</p>
                 <p className="text-xs text-ink-500">
-                  Tarif participant affiché sur les communications
+                  Tarif trainee affiché sur les communications
                   {t ? ` · ${euro(t.price_eur)}` : ""}
                 </p>
               </div>
             </div>
           )}
         </div>
+        ) : null}
 
         {/* Fondation (HelpMeSee only) */}
         {parcours === "helpmesee" ? (
@@ -889,9 +1037,12 @@ function LeadDrawer({
           </div>
         ) : null}
 
-        {/* Engagement contract + signed document — Bootcamp only (HelpMeSee is
-            funded by the foundation, so there is no deposit/contract step). */}
-        {parcours === "bootcamp" ? (
+        {/* Engagement contract + signed document — Bootcamp, only once the
+            contract has been sent (pré-inscription / caution reçus). At the
+            prérequis step the contract is just previewed + approved to send,
+            so nothing is signed yet. */}
+        {parcours === "bootcamp" &&
+        ["pre_registration", "deposit_contract"].includes(lead.stage) ? (
           <>
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
@@ -1045,14 +1196,14 @@ function LeadDrawer({
         {isAdmin ? (
           <button
             onClick={() => {
-              if (confirm(`Delete lead ${lead.first_name} ${lead.last_name}?`)) {
+              if (confirm(`Supprimer le Trainee ${lead.first_name} ${lead.last_name} ?`)) {
                 run(() => deleteLead(lead.id));
                 onDeleted();
               }
             }}
             className="rounded-xl px-2.5 py-2 text-sm text-red-500 hover:bg-red-50"
             title="Admin only"
-            aria-label="Delete lead"
+            aria-label="Supprimer le Trainee"
           >
             ✕
           </button>

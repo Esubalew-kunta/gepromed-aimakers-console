@@ -8,9 +8,12 @@ export interface ContractFormState {
   error?: string;
 }
 
-async function requireAdmin(): Promise<boolean> {
+/** Contract templates are managed by Gepromed staff + the AI Makers admin. */
+const CONTRACT_ROLES = ["admin", "gepromed", "manager"];
+
+async function requireStaff(): Promise<boolean> {
   const u = await getSessionUser();
-  return u?.role === "admin";
+  return u != null && CONTRACT_ROLES.includes(u.role);
 }
 
 /** Upload a new contract template (admin only). */
@@ -18,7 +21,7 @@ export async function uploadTemplate(
   _prev: ContractFormState,
   fd: FormData,
 ): Promise<ContractFormState> {
-  if (!(await requireAdmin())) return { error: "Admins only." };
+  if (!(await requireStaff())) return { error: "Réservé au personnel Gepromed." };
   const sb = supabaseServer();
   if (!sb) return { error: "Supabase not configured." };
 
@@ -27,6 +30,8 @@ export async function uploadTemplate(
   const file = fd.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
   const makeDefault = fd.get("is_default") != null;
+  // Courses (training ids) this contract covers → drives the auto-match.
+  const courseIds = fd.getAll("course_ids").map(String).filter(Boolean);
 
   const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
   const path = `${Date.now()}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.${ext}`;
@@ -40,7 +45,7 @@ export async function uploadTemplate(
   }
   const { error } = await sb
     .from("contract_templates")
-    .insert({ name, file_url: path, is_default: makeDefault });
+    .insert({ name, file_url: path, is_default: makeDefault, course_ids: courseIds });
   if (error) return { error: error.message };
 
   revalidatePath("/contracts");
@@ -49,7 +54,7 @@ export async function uploadTemplate(
 
 /** Make a template the global default (admin only). */
 export async function setDefaultTemplate(id: string) {
-  if (!(await requireAdmin())) return;
+  if (!(await requireStaff())) return;
   const sb = supabaseServer();
   if (!sb) return;
   await sb.from("contract_templates").update({ is_default: false }).eq("is_default", true);
@@ -59,7 +64,7 @@ export async function setDefaultTemplate(id: string) {
 
 /** Remove a template (admin only). */
 export async function deleteTemplate(id: string) {
-  if (!(await requireAdmin())) return;
+  if (!(await requireStaff())) return;
   const sb = supabaseServer();
   if (!sb) return;
   await sb.from("contract_templates").update({ active: false }).eq("id", id);

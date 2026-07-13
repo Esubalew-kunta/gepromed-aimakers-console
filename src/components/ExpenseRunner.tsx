@@ -13,6 +13,19 @@ import {
 
 type Phase = "setup" | "analyzing" | "review" | "committing" | "done";
 
+type PreviewRow = {
+  sheetName: string;
+  traveler: string;
+  date: string | null;
+  vendor: string | null;
+  category: string | null;
+  amountEUR: number | null;
+  vat: number | null;
+  currency: string | null;
+  location: string | null;
+};
+type PreviewData = { rows: PreviewRow[]; sheets: string[]; total: number; found: boolean; error?: string };
+
 const eur = (n: number | null | undefined) =>
   n == null ? "–" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
 
@@ -29,6 +42,9 @@ export function ExpenseRunner() {
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [committedName, setCommittedName] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sheetSynced, setSheetSynced] = useState<boolean | null>(null);
   const masterInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -43,6 +59,34 @@ export function ExpenseRunner() {
   }, []);
 
   const masterReady = masterFile != null || (useSaved && savedMaster);
+
+  // Preview the selected master (DB default or uploaded) so it shows side-by-side.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPreview() {
+      if (!(masterFile != null || (useSaved && savedMaster))) {
+        setPreview(null);
+        return;
+      }
+      setPreviewLoading(true);
+      try {
+        const fd = new FormData();
+        if (masterFile) fd.append("master", masterFile);
+        else fd.append("useSaved", "true");
+        const res = await fetch("/api/expenses/preview", { method: "POST", body: fd });
+        const d = (await res.json()) as PreviewData;
+        if (!cancelled) setPreview(d);
+      } catch {
+        if (!cancelled) setPreview(null);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }
+    loadPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [masterFile, useSaved, savedMaster]);
   const canAnalyze = masterReady && receipts.length > 0 && description.trim().length > 0;
 
   async function analyze() {
@@ -90,6 +134,7 @@ export function ExpenseRunner() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Échec de l'écriture.");
       }
+      setSheetSynced(res.headers.get("X-Sheet-Synced") === "true");
       const blob = await res.blob();
       const name = result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx";
       const url = URL.createObjectURL(blob);
@@ -123,39 +168,60 @@ export function ExpenseRunner() {
     <div className="space-y-6">
       {!extractionReady && (
         <Banner tone="amber">
-          L&apos;extraction IA (ANTHROPIC_API_KEY) n&apos;est pas configurée sur ce serveur, l&apos;analyse ne
-          fonctionnera pas tant que la clé n&apos;est pas ajoutée.
+          La clé d&apos;extraction IA (OPENAI_API_KEY ou ANTHROPIC_API_KEY) n&apos;est pas configurée sur ce
+          serveur, l&apos;analyse ne fonctionnera pas tant qu&apos;une clé n&apos;est pas ajoutée.
         </Banner>
       )}
       {error && <Banner tone="red">{error}</Banner>}
 
       {(phase === "setup" || phase === "analyzing") && (
-        <SetupCard
-          savedMaster={savedMaster}
-          useSaved={useSaved}
-          setUseSaved={setUseSaved}
-          masterFile={masterFile}
-          setMasterFile={setMasterFile}
-          masterInputRef={masterInputRef}
-          receipts={receipts}
-          setReceipts={setReceipts}
-          description={description}
-          setDescription={setDescription}
-          traveler={traveler}
-          setTraveler={setTraveler}
-          tripHint={tripHint}
-          setTripHint={setTripHint}
-          canAnalyze={canAnalyze}
-          analyzing={phase === "analyzing"}
-          onAnalyze={analyze}
-        />
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SetupCard
+            savedMaster={savedMaster}
+            useSaved={useSaved}
+            setUseSaved={setUseSaved}
+            masterFile={masterFile}
+            setMasterFile={setMasterFile}
+            masterInputRef={masterInputRef}
+            receipts={receipts}
+            setReceipts={setReceipts}
+            description={description}
+            setDescription={setDescription}
+            traveler={traveler}
+            setTraveler={setTraveler}
+            tripHint={tripHint}
+            setTripHint={setTripHint}
+            canAnalyze={canAnalyze}
+            analyzing={phase === "analyzing"}
+            onAnalyze={analyze}
+          />
+          <MasterPreview
+            preview={preview}
+            loading={previewLoading}
+            title="Aperçu du fichier maître (par défaut)"
+          />
+        </div>
       )}
 
       {phase === "review" && result && (
-        <ReviewTable result={result} onPatch={patch} onCommit={commit} onBack={reset} />
+        <div className="space-y-6">
+          <ReviewTable result={result} onPatch={patch} onCommit={commit} onBack={reset} />
+          <MasterPreview
+            preview={preview}
+            loading={previewLoading}
+            title="Fichier maître actuel — les lignes validées s'y ajouteront"
+          />
+        </div>
       )}
       {phase === "committing" && <Progress label="Écriture dans le fichier Excel de Nathalie…" />}
-      {phase === "done" && <DoneCard name={committedName} total={result?.grandTotalEUR ?? 0} onReset={reset} />}
+      {phase === "done" && (
+        <DoneCard
+          name={committedName}
+          total={result?.grandTotalEUR ?? 0}
+          sheetSynced={sheetSynced}
+          onReset={reset}
+        />
+      )}
     </div>
   );
 }
@@ -477,16 +543,96 @@ function ReviewTable({
   );
 }
 
-function DoneCard({ name, total, onReset }: { name: string | null; total: number; onReset: () => void }) {
+function MasterPreview({
+  preview,
+  loading,
+  title,
+}: {
+  preview: PreviewData | null;
+  loading: boolean;
+  title: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-ink-200 bg-white p-5">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-ink-900">{title}</div>
+        {preview?.found && !preview.error ? (
+          <span className="text-xs text-ink-500">
+            {preview.rows.length} ligne(s) · {eur(preview.total)}
+          </span>
+        ) : null}
+      </div>
+      {loading ? (
+        <p className="mt-3 text-xs text-ink-400">Chargement de l&apos;aperçu…</p>
+      ) : !preview || !preview.found ? (
+        <p className="mt-3 text-xs text-ink-400">
+          Aucun fichier maître enregistré. Importez la Matrice, elle sera enregistrée et proposée par défaut.
+        </p>
+      ) : preview.error ? (
+        <p className="mt-3 text-xs text-red-600">{preview.error}</p>
+      ) : preview.rows.length === 0 ? (
+        <p className="mt-3 text-xs text-ink-400">
+          Le fichier maître ne contient pas encore de dépenses enregistrées.
+        </p>
+      ) : (
+        <div className="mt-3 max-h-[440px] overflow-auto rounded-lg border border-ink-100">
+          <table className="w-full min-w-[520px] text-left text-[11px]">
+            <thead className="sticky top-0 bg-ink-50 text-ink-500">
+              <tr>
+                {["Feuille", "Date", "Fournisseur", "Catégorie", "Montant EUR"].map((h) => (
+                  <th key={h} className="px-2 py-1.5 font-semibold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100">
+              {preview.rows.map((r, i) => (
+                <tr key={i}>
+                  <td className="px-2 py-1.5 text-ink-500">{r.sheetName}</td>
+                  <td className="px-2 py-1.5">{r.date || "–"}</td>
+                  <td className="px-2 py-1.5 text-ink-700">{r.vendor || "–"}</td>
+                  <td className="px-2 py-1.5 text-ink-600">{r.category || "–"}</td>
+                  <td className="px-2 py-1.5 font-medium text-ink-900">{eur(r.amountEUR)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DoneCard({
+  name,
+  total,
+  sheetSynced,
+  onReset,
+}: {
+  name: string | null;
+  total: number;
+  sheetSynced: boolean | null;
+  onReset: () => void;
+}) {
   return (
     <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
         <Icon name="clipboard-check" className="h-6 w-6" />
       </div>
       <div>
-        <div className="text-sm font-semibold text-emerald-900">Fichier généré et téléchargé</div>
+        <div className="text-sm font-semibold text-emerald-900">
+          Fichier maître mis à jour et enregistré
+        </div>
         <p className="mt-1 text-xs text-emerald-700">
-          {name} · total cumulé {eur(total)}. Ouvrez-le, vérifiez, corrigez si besoin, les lignes validées sont verrouillées au prochain run.
+          {name} · total cumulé {eur(total)}. Le fichier est enregistré dans la base et proposé par défaut au prochain lot.
+        </p>
+        <p className="mt-2 text-xs font-medium">
+          {sheetSynced ? (
+            <span className="text-emerald-700">✓ Google Sheet synchronisé</span>
+          ) : (
+            <span className="text-amber-700">
+              Google Sheet non synchronisé (le connecteur n&apos;est pas encore configuré)
+            </span>
+          )}
         </p>
       </div>
       <button onClick={onReset} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">

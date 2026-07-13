@@ -9,23 +9,15 @@ import {
   type Parcours,
   type InterestLevel,
 } from "@/lib/leads-data";
-import { recordStageComms, type CommsLead } from "@/lib/notifications";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Fields needed to render + record a stage email. */
-const COMMS_SELECT =
-  "id,first_name,last_name,email,funding,sponsor_name,trainings(title,price_eur,is_sponsored,sponsors)";
-
-/** Fetch the lead (with training) and fire the stage communication. */
-async function fireComms(
-  sb: SupabaseClient,
-  leadId: string,
-  parcours: Parcours,
-  stage: Stage,
-) {
-  const { data } = await sb.from("leads").select(COMMS_SELECT).eq("id", leadId).single();
-  if (data) await recordStageComms(sb, data as unknown as CommsLead, parcours, stage);
-}
+/*
+ * Emails are NOT sent from here. Each stage transition writes a `lead_events`
+ * row (`type = 'stage:<next>'`); n8n listens (Supabase DB webhook / poll
+ * lead_events) and renders + sends the participant email from the
+ * `notification_templates` table, then logs it in `email_log`. See
+ * n8n/PHASE3_EMAIL_JOURNEY.md. Keeping emails out of the app avoids a second,
+ * divergent template source and double-sends.
+ */
 
 /**
  * Timestamp column set when a lead enters each stage. Covers the stages of
@@ -38,7 +30,6 @@ const STAGE_TS: Record<Stage, string | null> = {
   confirmed: "confirmed_at",
   done: "done_at",
   // HelpMeSee
-  enrollment_form: "enrollment_form_at",
   dates_validation: "dates_validated_at",
   invoice: "invoice_paid_at",
   elearning_check: "elearning_checked_at",
@@ -109,11 +100,10 @@ export async function advanceStage(
   }
 
   await sb.from("leads").update(patch).eq("id", leadId);
-  await logEvent(leadId, `stage:${next}`, { from: current, parcours });
-  // Background action: send + record the stage-specific participant email.
+  // This event is the trigger n8n listens on to send the stage email.
   // (Entering pre_registration/deposit_contract also auto-attaches the
   // engagement contract via the DB trigger trg_auto_contract.)
-  await fireComms(sb, leadId, parcours, next);
+  await logEvent(leadId, `stage:${next}`, { from: current, parcours });
   revalidatePath("/trainees");
   return {};
 }
@@ -211,7 +201,8 @@ export async function verifyEligibility(leadId: string, pass: boolean, note?: st
       })
       .eq("id", leadId);
     await logEvent(leadId, "eligibility:passed", { note: note ?? null });
-    await fireComms(sb, leadId, "bootcamp", "pre_registration");
+    // n8n sends the "deposit + contract" email off the resulting stage event.
+    await logEvent(leadId, "stage:pre_registration", { from: "prerequisites", parcours: "bootcamp" });
   } else {
     await sb
       .from("leads")
@@ -326,9 +317,12 @@ export async function verifyAndConfirm(leadId: string, docId: string) {
     })
     .eq("id", leadId);
   await logEvent(leadId, "document:verified", { docId });
-  // Confirmation email (uses the lead's own parcours).
+  // Confirming the seat is a stage change → n8n sends the confirmation email.
   const { data: p } = await sb.from("leads").select("parcours").eq("id", leadId).single();
-  await fireComms(sb, leadId, (p?.parcours as Parcours) ?? "bootcamp", "confirmed");
+  await logEvent(leadId, "stage:confirmed", {
+    from: "deposit_contract",
+    parcours: (p?.parcours as Parcours) ?? "bootcamp",
+  });
   revalidatePath("/trainees");
 }
 

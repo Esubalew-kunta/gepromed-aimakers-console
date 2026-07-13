@@ -20,8 +20,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    // suppressHydrationWarning: browser extensions (e.g. Foxified/Crosspilot)
+    // inject attributes onto <html>/<body> before React hydrates, which would
+    // otherwise trigger a hydration-attribute-mismatch warning. Scoped to these
+    // two elements only — it does not hide real mismatches elsewhere.
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

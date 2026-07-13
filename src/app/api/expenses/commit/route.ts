@@ -10,6 +10,47 @@ export const maxDuration = 120;
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+/**
+ * After the master is saved to the DB, mirror the committed rows to the Google
+ * Sheet via the n8n webhook (idempotent by docKey). Env-gated + best-effort:
+ * returns false (never throws) when EXPENSE_SHEET_WEBHOOK_URL is unset or n8n is
+ * unreachable — a commit must never fail because the mirror is down.
+ */
+async function pushToGoogleSheet(
+  runId: string,
+  employeeName: string,
+  expenses: ProcessedExpense[],
+): Promise<boolean> {
+  const url = process.env.EXPENSE_SHEET_WEBHOOK_URL;
+  if (!url) return false;
+  const rows = expenses
+    .filter((e) => e.docKey && !e.duplicateOfId && !e.idempotentSkip)
+    .map((e) => ({
+      docKey: e.docKey,
+      issueDateLabel: e.issueDateLabel,
+      purpose: e.purpose,
+      location: e.location,
+      originalCurrency: e.originalCurrency,
+      amountEUR: e.amountEUR,
+      category: e.category,
+      vatRecoverable: e.vatRecoverable,
+    }));
+  if (rows.length === 0) return false;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-webhook-secret": process.env.N8N_WEBHOOK_SECRET ?? "",
+      },
+      body: JSON.stringify({ runId, employeeName, rows }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
@@ -50,12 +91,15 @@ export async function POST(req: Request) {
   try {
     const { buffer } = await commitBatch({ masterBuffer, expenses, employeeName, runId });
     await saveMaster(user.email, buffer); // persist the updated master for next time
+    // Then mirror the committed rows to the Google Sheet (idempotent, best-effort).
+    const sheetSynced = await pushToGoogleSheet(runId, employeeName, expenses);
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": XLSX_MIME,
         "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
         "Cache-Control": "no-store",
+        "X-Sheet-Synced": sheetSynced ? "true" : "false",
       },
     });
   } catch (e) {

@@ -439,7 +439,10 @@ function SetupCard(props: {
         {p.receipts.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-2">
             {p.receipts.map((f, i) => (
-              <li key={i} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-50 px-2.5 py-1 text-xs text-ink-600">
+              <li
+                key={`${f.name}-${f.size}-${f.lastModified}-${i}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink-50 px-2.5 py-1 text-xs text-ink-600"
+              >
                 {f.name}
                 <button
                   type="button"

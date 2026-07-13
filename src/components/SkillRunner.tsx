@@ -103,16 +103,14 @@ export function SkillRunner({
         </div>
 
         <button type="submit" className="btn-primary mt-5 w-full" disabled={pending}>
-          {pending ? (
-            <>
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-              Generating…
-            </>
-          ) : (
-            <>
-              <Icon name="play" className="h-4 w-4" /> Run skill
-            </>
-          )}
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+            {pending ? (
+              <span key="spinner" className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            ) : (
+              <Icon key="icon" name="play" className="h-4 w-4" />
+            )}
+          </span>
+          <span>{pending ? "Generating…" : "Run skill"}</span>
         </button>
         <p className="mt-2 text-center text-xs text-ink-400">
           Runs live via Claude when configured · falls back to an offline demo

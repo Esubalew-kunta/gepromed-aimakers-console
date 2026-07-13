@@ -46,16 +46,14 @@ export function AutomationRunner({
   return (
     <div>
       <button className="btn-primary w-full" onClick={run} disabled={running}>
-        {running ? (
-          <>
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-            Running…
-          </>
-        ) : (
-          <>
-            <Icon name="play" className="h-4 w-4" /> Run now (simulated)
-          </>
-        )}
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+          {running ? (
+            <span key="spinner" className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+          ) : (
+            <Icon key="icon" name="play" className="h-4 w-4" />
+          )}
+        </span>
+        <span>{running ? "Running…" : "Run now (simulated)"}</span>
       </button>
 
       {shown.length > 0 ? (

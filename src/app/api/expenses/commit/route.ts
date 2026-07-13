@@ -90,10 +90,14 @@ export async function POST(req: Request) {
 
   try {
     const { buffer } = await commitBatch({ masterBuffer, expenses, employeeName, runId });
+    // Snapshot the download bytes into an INDEPENDENT copy NOW: saveMaster's
+    // upload (undici fetch) can detach the buffer's underlying ArrayBuffer,
+    // which would otherwise leave the response body empty ("empty Excel").
+    const downloadBody = new Uint8Array(buffer);
     await saveMaster(user.email, buffer); // persist the updated master for next time
     // Then mirror the committed rows to the Google Sheet (idempotent, best-effort).
     const sheetSynced = await pushToGoogleSheet(runId, employeeName, expenses);
-    return new NextResponse(new Uint8Array(buffer), {
+    return new NextResponse(downloadBody, {
       status: 200,
       headers: {
         "Content-Type": XLSX_MIME,

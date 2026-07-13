@@ -5,10 +5,11 @@ import { FileExtractionSchema, type FileExtraction, type DepositContext } from "
 
 /**
  * Receipt extraction via a vision LLM. Provider is chosen from the environment:
- * OpenAI (GPT-4o family) when OPENAI_API_KEY is set, otherwise Anthropic
- * (Claude) when ANTHROPIC_API_KEY is set. Both read PDFs and images natively
- * (multilingual OCR + layout), return ONE object per distinct receipt in a
- * file, and MUST NOT invent: missing/unclear => null + low confidence + alert.
+ * by default Anthropic (Claude) when ANTHROPIC_API_KEY is set, else OpenAI
+ * (GPT-4o family) when OPENAI_API_KEY is set. Set EXTRACTION_PROVIDER=openai to
+ * force OpenAI (or =anthropic to force Claude). Both read PDFs and images
+ * natively (multilingual OCR + layout), return ONE object per distinct receipt
+ * in a file, and MUST NOT invent: missing/unclear => null + low confidence + alert.
  */
 
 const openaiKey = process.env.OPENAI_API_KEY;
@@ -16,12 +17,21 @@ const openaiModel = process.env.OPENAI_MODEL || "gpt-4o";
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
 
-/** Prefer OpenAI when its key is present; else Anthropic; else nothing. */
-const provider: "openai" | "anthropic" | null = openaiKey
-  ? "openai"
-  : anthropicKey
-    ? "anthropic"
-    : null;
+/**
+ * EXTRACTION_PROVIDER (if set and its key is present) wins; otherwise prefer
+ * Anthropic (Claude) when its key is set, else OpenAI; else nothing.
+ */
+const preferred = (process.env.EXTRACTION_PROVIDER || "").toLowerCase();
+const provider: "openai" | "anthropic" | null =
+  preferred === "openai" && openaiKey
+    ? "openai"
+    : preferred === "anthropic" && anthropicKey
+      ? "anthropic"
+      : anthropicKey
+        ? "anthropic"
+        : openaiKey
+          ? "openai"
+          : null;
 
 export function isExtractionConfigured(): boolean {
   return provider !== null;

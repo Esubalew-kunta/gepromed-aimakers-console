@@ -572,7 +572,7 @@ function ReviewTable({
           </thead>
           <tbody className="divide-y divide-ink-100">
             {active.map((e) => (
-              <tr key={e.id} className={e.needsReview ? "bg-amber-50/50" : ""}>
+              <tr key={`active-${e.id}`} className={e.needsReview ? "bg-amber-50/50" : ""}>
                 <td className="px-2.5 py-2 text-ink-500">{e.sourceFile}</td>
                 <td className="px-2.5 py-2">
                   <select
@@ -716,7 +716,7 @@ function ReviewTable({
               </tr>
             ))}
             {excluded.map((e) => (
-              <tr key={e.id} className="bg-ink-50/60 text-ink-400">
+              <tr key={`excluded-${e.id}`} className="bg-ink-50/60 text-ink-400">
                 <td className="px-2.5 py-2">{e.sourceFile}</td>
                 <td className="px-2.5 py-2">{categoryLabel(e.category)}</td>
                 <td className="px-2.5 py-2">{e.issueDateLabel || "–"}</td>

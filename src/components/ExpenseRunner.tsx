@@ -806,7 +806,7 @@ function MasterPreview({
             </thead>
             <tbody className="divide-y divide-ink-100">
               {preview.rows.map((r, i) => (
-                <tr key={i}>
+                <tr key={`${r.sheetName}-${r.date}-${r.vendor}-${r.amountEUR}-${i}`}>
                   <td className="px-2 py-1.5 text-ink-500">{r.sheetName}</td>
                   <td className="px-2 py-1.5">{r.date || "–"}</td>
                   <td className="px-2 py-1.5 text-ink-700">{r.vendor || "–"}</td>

@@ -22,9 +22,49 @@ begin
 end; $$;
 grant execute on function log_email_once(uuid, text, text, boolean) to service_role;
 
+-- 2b. Wraps a plain-text body (staff edits plain wording, no HTML) into a
+-- branded HTML email shell at render/send time — same visual style as the
+-- Phase-1 templates (blue header bar, white card). Blank lines become
+-- paragraph breaks, single line breaks become <br>. Never touches storage,
+-- only the outgoing render, so non-technical staff keep editing plain text.
+create or replace function wrap_email_html(p_body text)
+returns text language sql immutable as $$
+  select
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7f9;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">' ||
+    '<tr><td align="center">' ||
+    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #eceef2;border-radius:12px;overflow:hidden;">' ||
+    '<tr><td style="background:#1a4fb8;padding:20px 28px;">' ||
+    '<span style="color:#ffffff;font-size:20px;font-weight:bold;">Gepromed</span>' ||
+    '<span style="color:#bcdcff;font-size:12px;">&nbsp;&nbsp;Formation chirurgicale</span>' ||
+    '</td></tr>' ||
+    '<tr><td style="padding:28px;color:#1f2430;font-size:15px;line-height:1.6;">' ||
+    (
+      select string_agg(
+        '<p style="margin:0 0 14px;">' ||
+        replace(trim(both E'\n' from para), E'\n', '<br>') ||
+        '</p>',
+        ''
+      )
+      from unnest(
+        regexp_split_to_array(
+          replace(replace(replace(p_body, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'),
+          E'\n\s*\n'
+        )
+      ) as para
+      where trim(para) <> ''
+    ) ||
+    '</td></tr>' ||
+    '<tr><td style="padding:16px 28px;background:#f9fafb;border-top:1px solid #eceef2;color:#9aa2b1;font-size:11px;">' ||
+    'Gepromed &middot; 4 rue Kirschleger, 67000 Strasbourg' ||
+    '</td></tr>' ||
+    '</table></td></tr></table>';
+$$;
+
 -- 2. Render a template for a lead: fills the DB-derivable merge fields and
--- returns {send, to, subject, body, sender}. Client-provided links (deposit,
--- survey, instructor...) are left as literal {{...}} until supplied.
+-- returns {send, to, subject, body, body_html, sender}. body stays plain text
+-- (what staff edited); body_html is the branded version n8n actually sends.
+-- Client-provided links (deposit, survey, instructor...) are left as literal
+-- {{...}} until supplied.
 create or replace function render_notification(p_lead uuid, p_template_key text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare tpl record; l record; t record; subj text; bod text; block text; dates text;
@@ -61,6 +101,7 @@ begin
   bod := replace(bod, '{{sponsor_or_tariff}}', block);
   bod := replace(bod, '{{elearning_link}}', 'https://gepromed.sinfony.eu/');
 
-  return jsonb_build_object('send', true, 'to', l.email, 'subject', subj, 'body', bod, 'sender', tpl.sender);
+  return jsonb_build_object('send', true, 'to', l.email, 'subject', subj, 'body', bod, 'body_html', wrap_email_html(bod), 'sender', tpl.sender);
 end; $$;
 grant execute on function render_notification(uuid, text) to service_role;
+grant execute on function wrap_email_html(text) to service_role;

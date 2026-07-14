@@ -45,6 +45,12 @@ export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> 
 
   const expenses: ProcessedExpense[] = [];
   const skipped: { file: string; reason: string }[] = [];
+  // Batch-wide counter for `id` (React/UI identity) — NOT the same as the
+  // per-file `idx` below (which feeds the FILE:hash:index docKey fallback).
+  // Two identical files uploaded in one batch share a hash, so keying `id`
+  // off the per-file idx alone would collide ("hash-0" both times), causing
+  // React key collisions in the review table once one is un-excluded.
+  let globalIdx = 0;
 
   for (const file of files) {
     let fileResult;
@@ -61,7 +67,7 @@ export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> 
 
     let idx = 0;
     for (const r of fileResult.receipts) {
-      const id = `${file.hash.slice(0, 10)}-${idx}`;
+      const id = `${file.hash.slice(0, 10)}-${idx}-${globalIdx++}`;
       let fx = null;
       let fxError: string | null = null;
       if (r.currency && r.currency.toUpperCase() !== "EUR" && r.amountTTC != null && r.issueDate) {

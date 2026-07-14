@@ -480,13 +480,22 @@ export interface Lead {
   // Shared tail-end / exit timestamps.
   done_at?: string | null;
   not_interested_at?: string | null;
+  /** Set when a registered trainee cancels/withdraws — distinct from
+   * interest = "not_interested" (a lead who never engaged). NULL = active.
+   * No refund is implied; deposit handling is manual/external per SOP. */
+  cancelled_at?: string | null;
 
   created_at: string;
   updated_at: string;
   trainings: {
     title: { fr: string; en: string };
+    summary?: { fr: string; en: string } | null;
+    specialty?: string | null;
+    level?: string | null;
     deposit_eur: number;
     price_eur: number;
+    capacity?: number;
+    enrolled?: number;
     city: string;
     start_date: string;
     end_date: string;
@@ -512,6 +521,12 @@ export interface LeadStats {
   confirmed: number;
   /** Completed the parcours. */
   completed: number;
+  /** Sponsored (funding === "sponsored") — a share worth surfacing since
+   * sponsor logos/rules affect communications (SOP Rule 1). */
+  sponsored: number;
+  /** Exited the track (interest === "not_interested") — distinct from
+   * "active", worth its own count so it isn't silently absorbed elsewhere. */
+  notInterested: number;
 }
 
 /**
@@ -526,10 +541,13 @@ export function computeStats(leads: Lead[]): LeadStats {
     active: leads.filter(
       (l) =>
         l.interest !== "not_interested" &&
+        !l.cancelled_at &&
         l.stage !== "confirmed" &&
         l.stage !== "done",
     ).length,
     confirmed: leads.filter((l) => l.stage === "confirmed").length,
     completed: leads.filter((l) => l.stage === "done").length,
+    sponsored: leads.filter((l) => l.funding === "sponsored").length,
+    notInterested: leads.filter((l) => l.interest === "not_interested").length,
   };
 }

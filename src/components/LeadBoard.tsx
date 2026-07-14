@@ -19,12 +19,13 @@ import {
   resolveAdvance,
   normalizeParcours,
   INTEREST_LEVELS,
-  INTEREST_LABEL,
 } from "@/lib/leads-shared";
 import {
   advanceStage,
   setInterest,
   setNotInterested,
+  cancelRegistration,
+  reinstateLead,
   toggleReminders,
   addComment,
   deleteLead,
@@ -38,6 +39,7 @@ import {
   setElearningCompleted,
 } from "@/app/(app)/trainees/actions";
 import type { ContractTemplate } from "@/lib/contracts-shared";
+import { useT, useLang, type Lang, type DictKey } from "@/lib/i18n";
 
 /** Which stage timestamp field on a Lead corresponds to each stage id. */
 const STAGE_TS_FIELD: Record<Stage, keyof Lead | null> = {
@@ -64,6 +66,16 @@ const INT_DOT: Record<InterestLevel, string> = {
   unreachable: "bg-orange-500",
 };
 
+/** i18n key per interest level — INTEREST_LABEL in leads-shared.ts is
+ * English-only data, this maps it to the app's translated dictionary. */
+const INTEREST_KEY: Record<InterestLevel, DictKey> = {
+  highly_interested: "pipeline.interest.highlyInterested",
+  interested: "pipeline.interest.interested",
+  neutral: "pipeline.interest.neutral",
+  not_interested: "pipeline.interest.notInterested",
+  unreachable: "pipeline.interest.unreachable",
+};
+
 const fmtDay = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "";
 
@@ -88,82 +100,186 @@ type ParcoursFilter = Parcours | "all";
  * Makes every stage read distinctly instead of a generic screen.
  */
 type StepHelp = { what: string; waitingFor: string; onAdvance: string };
-const STAGE_HELP: Record<Parcours, Partial<Record<Stage, StepHelp>>> = {
+const STAGE_HELP: Record<Parcours, Partial<Record<Stage, Record<Lang, StepHelp>>>> = {
   helpmesee: {
     lead: {
-      what: "Trainee référencé par la fondation HelpMeSee.",
-      waitingFor: "Prise en charge du dossier par l'équipe.",
-      onAdvance: "Démarre le suivi → email « validation des dates ».",
+      fr: {
+        what: "Trainee référencé par la fondation HelpMeSee.",
+        waitingFor: "Prise en charge du dossier par l'équipe.",
+        onAdvance: "Démarre le suivi → email « validation des dates ».",
+      },
+      en: {
+        what: "Trainee referred by the HelpMeSee foundation.",
+        waitingFor: "The team taking ownership of the case.",
+        onAdvance: "Starts the follow-up → \"dates validation\" email.",
+      },
     },
     dates_validation: {
-      what: "Validation des dates de formation avec un instructeur.",
-      waitingFor: "Dates confirmées avec un instructeur.",
-      onAdvance: "Confirme les dates → email « facture émise ».",
+      fr: {
+        what: "Validation des dates de formation avec un instructeur.",
+        waitingFor: "Dates confirmées avec un instructeur.",
+        onAdvance: "Confirme les dates → email « facture émise ».",
+      },
+      en: {
+        what: "Validating the training dates with an instructor.",
+        waitingFor: "Dates confirmed with an instructor.",
+        onAdvance: "Confirms the dates → \"invoice issued\" email.",
+      },
     },
     invoice: {
-      what: "Facture émise (prise en charge par la fondation).",
-      waitingFor: "Règlement de la facture par la fondation.",
-      onAdvance: "Marque la facture payée → email « modules e-learning ».",
+      fr: {
+        what: "Facture émise (prise en charge par la fondation).",
+        waitingFor: "Règlement de la facture par la fondation.",
+        onAdvance: "Marque la facture payée → email « modules e-learning ».",
+      },
+      en: {
+        what: "Invoice issued (covered by the foundation).",
+        waitingFor: "Invoice payment by the foundation.",
+        onAdvance: "Marks the invoice paid → \"e-learning modules\" email.",
+      },
     },
     elearning_check: {
-      what: "GATE — les modules e-learning de la fondation (externes à Gepromed) doivent être vérifiés AVANT l'accès simulateur.",
-      waitingFor: "Preuve de complétion des modules fondation.",
-      onAdvance: "Débloque l'accès → email « accès simulateur + infos pratiques ».",
+      fr: {
+        what: "GATE — les modules e-learning de la fondation (externes à Gepromed) doivent être vérifiés AVANT l'accès simulateur.",
+        waitingFor: "Preuve de complétion des modules fondation.",
+        onAdvance: "Débloque l'accès → email « accès simulateur + infos pratiques ».",
+      },
+      en: {
+        what: "GATE — the foundation's e-learning modules (external to Gepromed) must be verified BEFORE simulator access.",
+        waitingFor: "Proof of completion of the foundation modules.",
+        onAdvance: "Unlocks access → \"simulator access + practical info\" email.",
+      },
     },
     simulator_access: {
-      what: "Identifiants simulateur + infos pratiques envoyés.",
-      waitingFor: "Prêt à confirmer la place.",
-      onAdvance: "Confirme la place → email « place confirmée » + LMS.",
+      fr: {
+        what: "Identifiants simulateur + infos pratiques envoyés.",
+        waitingFor: "Prêt à confirmer la place.",
+        onAdvance: "Confirme la place → email « place confirmée » + LMS.",
+      },
+      en: {
+        what: "Simulator credentials + practical info sent.",
+        waitingFor: "Ready to confirm the seat.",
+        onAdvance: "Confirms the seat → \"seat confirmed\" email + LMS.",
+      },
     },
     confirmed: {
-      what: "Prêt — formation planifiée.",
-      waitingFor: "Déroulement de la formation.",
-      onAdvance: "Clôture → email « questionnaire de satisfaction ».",
+      fr: {
+        what: "Prêt — formation planifiée.",
+        waitingFor: "Déroulement de la formation.",
+        onAdvance: "Clôture → email « questionnaire de satisfaction ».",
+      },
+      en: {
+        what: "Ready — training scheduled.",
+        waitingFor: "The training taking place.",
+        onAdvance: "Closes out → \"satisfaction survey\" email.",
+      },
     },
-    done: { what: "Parcours terminé — satisfaction envoyée.", waitingFor: "—", onAdvance: "" },
+    done: {
+      fr: { what: "Parcours terminé — satisfaction envoyée.", waitingFor: "—", onAdvance: "" },
+      en: { what: "Track completed — satisfaction survey sent.", waitingFor: "—", onAdvance: "" },
+    },
   },
   bootcamp: {
     lead: {
-      what: "Nouvelle demande d'inscription reçue.",
-      waitingFor: "Prise en charge et vérification des prérequis.",
-      onAdvance: "Démarre le suivi → étape prérequis.",
+      fr: {
+        what: "Nouvelle demande d'inscription reçue.",
+        waitingFor: "Prise en charge et vérification des prérequis.",
+        onAdvance: "Démarre le suivi → étape prérequis.",
+      },
+      en: {
+        what: "New registration request received.",
+        waitingFor: "Case taken on and prerequisites checked.",
+        onAdvance: "Starts the follow-up → prerequisites step.",
+      },
     },
     prerequisites: {
-      what: "GATE — vérifiez spécialité / statut / pays (Bootcamp = chirurgie vasculaire) et le contrat.",
-      waitingFor: "Décision d'éligibilité (conforme / non conforme).",
-      onAdvance: "Si conforme → email « caution 200 € + contrat » et contrat attaché automatiquement.",
+      fr: {
+        what: "GATE — vérifiez spécialité / statut / pays (Bootcamp = chirurgie vasculaire) et le contrat.",
+        waitingFor: "Décision d'éligibilité (conforme / non conforme).",
+        onAdvance: "Si conforme → email « caution 200 € + contrat » et contrat attaché automatiquement.",
+      },
+      en: {
+        what: "GATE — check specialty / status / country (Bootcamp = vascular surgery) and the contract.",
+        waitingFor: "Eligibility decision (compliant / not compliant).",
+        onAdvance: "If compliant → \"€200 deposit + contract\" email, contract attached automatically.",
+      },
     },
     pre_registration: {
-      what: "Caution 200 € + contrat d'engagement demandés (contrat attaché).",
-      waitingFor: "Caution payée ET contrat signé reçus.",
-      onAdvance: "Confirme la réception → email « caution et contrat reçus ».",
+      fr: {
+        what: "Caution 200 € + contrat d'engagement demandés (contrat attaché).",
+        waitingFor: "Caution payée ET contrat signé reçus.",
+        onAdvance: "Confirme la réception → email « caution et contrat reçus ».",
+      },
+      en: {
+        what: "€200 deposit + engagement contract requested (contract attached).",
+        waitingFor: "Deposit paid AND signed contract received.",
+        onAdvance: "Confirms receipt → \"deposit and contract received\" email.",
+      },
     },
     deposit_contract: {
-      what: "Caution et contrat reçus.",
-      waitingFor: "Envoi des infos pratiques (J-30).",
-      onAdvance: "Email « infos pratiques » (logo sponsor OU tarif — Règle 1).",
+      fr: {
+        what: "Caution et contrat reçus.",
+        waitingFor: "Envoi des infos pratiques (J-30).",
+        onAdvance: "Email « infos pratiques » (logo sponsor OU tarif — Règle 1).",
+      },
+      en: {
+        what: "Deposit and contract received.",
+        waitingFor: "Sending practical info (D-30).",
+        onAdvance: "\"Practical info\" email (sponsor logo OR price — Rule 1).",
+      },
     },
     practical_info: {
-      what: "Infos pratiques envoyées (J-30).",
-      waitingFor: "Envoi de l'accès e-learning (J-15/7).",
-      onAdvance: "Email « accès e-learning » (LMS Gepromed).",
+      fr: {
+        what: "Infos pratiques envoyées (J-30).",
+        waitingFor: "Envoi de l'accès e-learning (J-15/7).",
+        onAdvance: "Email « accès e-learning » (LMS Gepromed).",
+      },
+      en: {
+        what: "Practical info sent (D-30).",
+        waitingFor: "Sending e-learning access (D-15/7).",
+        onAdvance: "\"E-learning access\" email (Gepromed LMS).",
+      },
     },
     elearning_sent: {
-      what: "Accès e-learning envoyés (J-15/7).",
-      waitingFor: "Prêt à confirmer la place.",
-      onAdvance: "Confirme la place → email « place confirmée » + LMS.",
+      fr: {
+        what: "Accès e-learning envoyés (J-15/7).",
+        waitingFor: "Prêt à confirmer la place.",
+        onAdvance: "Confirme la place → email « place confirmée » + LMS.",
+      },
+      en: {
+        what: "E-learning access sent (D-15/7).",
+        waitingFor: "Ready to confirm the seat.",
+        onAdvance: "Confirms the seat → \"seat confirmed\" email + LMS.",
+      },
     },
     confirmed: {
-      what: "Prêt pour l'événement. La présence conditionne le remboursement.",
-      waitingFor: "Déroulement de l'événement + confirmation de présence.",
-      onAdvance: "Caution remboursée (si présent en intégralité) sinon clôture.",
+      fr: {
+        what: "Prêt pour l'événement. La présence conditionne le remboursement.",
+        waitingFor: "Déroulement de l'événement + confirmation de présence.",
+        onAdvance: "Caution remboursée (si présent en intégralité) sinon clôture.",
+      },
+      en: {
+        what: "Ready for the event. Attendance conditions the refund.",
+        waitingFor: "The event taking place + attendance confirmation.",
+        onAdvance: "Deposit refunded (if attended in full), otherwise closed out.",
+      },
     },
     deposit_refunded: {
-      what: "Caution remboursée.",
-      waitingFor: "Clôture (modules finaux + satisfaction).",
-      onAdvance: "Email « modules finaux + satisfaction ».",
+      fr: {
+        what: "Caution remboursée.",
+        waitingFor: "Clôture (modules finaux + satisfaction).",
+        onAdvance: "Email « modules finaux + satisfaction ».",
+      },
+      en: {
+        what: "Deposit refunded.",
+        waitingFor: "Closing out (final modules + satisfaction).",
+        onAdvance: "\"Final modules + satisfaction\" email.",
+      },
     },
-    done: { what: "Parcours terminé — modules finaux + satisfaction.", waitingFor: "—", onAdvance: "" },
+    done: {
+      fr: { what: "Parcours terminé — modules finaux + satisfaction.", waitingFor: "—", onAdvance: "" },
+      en: { what: "Track completed — final modules + satisfaction.", waitingFor: "—", onAdvance: "" },
+    },
   },
 };
 
@@ -172,13 +288,19 @@ export function LeadBoard({
   isAdmin = false,
   templates = [],
   publicBase = null,
+  onVisibleChange,
 }: {
   leads: Lead[];
   isAdmin?: boolean;
   templates?: ContractTemplate[];
   publicBase?: string | null;
+  /** Reports the currently filtered/visible leads upward, so a parent can
+   * keep KPI stats in sync with whatever this board is showing right now. */
+  onVisibleChange?: (visible: Lead[]) => void;
 }) {
   const router = useRouter();
+  const t = useT();
+  const { lang } = useLang();
   const [pending, start] = useTransition();
   const [parcoursFilter, setParcoursFilter] = useState<ParcoursFilter>("all");
   const [tab, setTab] = useState<Tab>("all");
@@ -238,9 +360,9 @@ export function LeadBoard({
     const seen = new Map<string, string>();
     for (const l of leads)
       if (l.training_id && l.trainings)
-        seen.set(l.training_id, l.trainings.title.fr);
+        seen.set(l.training_id, l.trainings.title[lang] ?? l.trainings.title.fr);
     return Array.from(seen, ([id, title]) => ({ id, title }));
-  }, [leads]);
+  }, [leads, lang]);
 
   // Stage tabs only make sense within a single parcours (the two stage sets
   // differ). When viewing "all" parcours we show just All + Not interested.
@@ -305,6 +427,10 @@ export function LeadBoard({
     });
   }, [leads, parcoursFilter, tab, q, fSession, fInterest, fReminders, fAccommodation, fElearning, fDocStatus]);
 
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
+
   return (
     <div>
       {/* Toolbar */}
@@ -312,12 +438,12 @@ export function LeadBoard({
         {/* Parcours split, HelpMeSee vs Bootcamps & Workshops */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wide text-ink-400">
-            Parcours
+            {t("pipeline.parcoursLabel")}
           </span>
           <div className="inline-flex rounded-xl border border-ink-200 bg-white p-0.5">
             {(["all", ...PARCOURS] as ParcoursFilter[]).map((p) => {
               const active = parcoursFilter === p;
-              const label = p === "all" ? "Tous" : PARCOURS_LABEL[p];
+              const label = p === "all" ? t("pipeline.all") : PARCOURS_LABEL[p];
               return (
                 <button
                   key={p}
@@ -349,7 +475,7 @@ export function LeadBoard({
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search name, email, institution, profession…"
+              placeholder={t("pipeline.searchPlaceholder")}
               className="input !pl-9"
             />
           </div>
@@ -365,7 +491,7 @@ export function LeadBoard({
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M4 5h16M7 12h10M10 19h4" strokeLinecap="round" />
               </svg>
-              Filters
+              {t("pipeline.filters")}
               {activeFilters > 0 ? (
                 <span className="rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
                   {activeFilters}
@@ -376,17 +502,17 @@ export function LeadBoard({
               <div className="absolute right-0 z-30 mt-2 w-72 space-y-3 rounded-xl border border-ink-100 bg-white p-4 shadow-lg">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wide text-ink-400">
-                    Filters
+                    {t("pipeline.filters")}
                   </span>
                   {activeFilters > 0 ? (
                     <button onClick={clearFilters} className="text-xs font-medium text-brand-600 hover:underline">
-                      Clear all
+                      {t("pipeline.clearAll")}
                     </button>
                   ) : null}
                 </div>
-                <FilterRow label="Session">
+                <FilterRow label={t("pipeline.filterSession")}>
                   <select value={fSession} onChange={(e) => setFSession(e.target.value)} className="input">
-                    <option value="">All sessions</option>
+                    <option value="">{t("pipeline.filterAllSessions")}</option>
                     {sessions.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.title}
@@ -394,43 +520,43 @@ export function LeadBoard({
                     ))}
                   </select>
                 </FilterRow>
-                <FilterRow label="Interest">
+                <FilterRow label={t("pipeline.filterInterest")}>
                   <select value={fInterest} onChange={(e) => setFInterest(e.target.value)} className="input">
-                    <option value="">All</option>
+                    <option value="">{t("pipeline.filterAll")}</option>
                     {INTEREST_LEVELS.map((i) => (
                       <option key={i} value={i}>
-                        {INTEREST_LABEL[i]}
+                        {t(INTEREST_KEY[i])}
                       </option>
                     ))}
                   </select>
                 </FilterRow>
-                <FilterRow label="Reminders">
+                <FilterRow label={t("pipeline.filterReminders")}>
                   <select value={fReminders} onChange={(e) => setFReminders(e.target.value)} className="input">
-                    <option value="">All</option>
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
+                    <option value="">{t("pipeline.filterAll")}</option>
+                    <option value="on">{t("pipeline.filterOn")}</option>
+                    <option value="off">{t("pipeline.filterOff")}</option>
                   </select>
                 </FilterRow>
-                <FilterRow label="Signed document">
+                <FilterRow label={t("pipeline.filterSignedDoc")}>
                   <select value={fDocStatus} onChange={(e) => setFDocStatus(e.target.value)} className="input">
-                    <option value="">All</option>
-                    <option value="pending">Pending verification</option>
-                    <option value="verified">Verified</option>
-                    <option value="none">No document</option>
+                    <option value="">{t("pipeline.filterAll")}</option>
+                    <option value="pending">{t("pipeline.filterPending")}</option>
+                    <option value="verified">{t("pipeline.filterVerified")}</option>
+                    <option value="none">{t("pipeline.filterNoDoc")}</option>
                   </select>
                 </FilterRow>
-                <FilterRow label="Accommodation">
+                <FilterRow label={t("pipeline.filterAccommodation")}>
                   <select value={fAccommodation} onChange={(e) => setFAccommodation(e.target.value)} className="input">
-                    <option value="">All</option>
-                    <option value="yes">Needed</option>
-                    <option value="no">Not needed</option>
+                    <option value="">{t("pipeline.filterAll")}</option>
+                    <option value="yes">{t("pipeline.filterNeeded")}</option>
+                    <option value="no">{t("pipeline.filterNotNeeded")}</option>
                   </select>
                 </FilterRow>
-                <FilterRow label="E-learning">
+                <FilterRow label={t("pipeline.filterElearning")}>
                   <select value={fElearning} onChange={(e) => setFElearning(e.target.value)} className="input">
-                    <option value="">All</option>
-                    <option value="yes">Enabled</option>
-                    <option value="no">Disabled</option>
+                    <option value="">{t("pipeline.filterAll")}</option>
+                    <option value="yes">{t("pipeline.filterEnabled")}</option>
+                    <option value="no">{t("pipeline.filterDisabled")}</option>
                   </select>
                 </FilterRow>
               </div>
@@ -438,20 +564,20 @@ export function LeadBoard({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {tabs.map((t) => {
-            const active = tab === t;
+          {tabs.map((tb) => {
+            const active = tab === tb;
             const label =
-              t === "all"
-                ? "All"
-                : t === "not_interested"
-                  ? "Not interested"
+              tb === "all"
+                ? t("pipeline.tabAll")
+                : tb === "not_interested"
+                  ? t("pipeline.tabNotInterested")
                   : parcoursFilter === "all"
-                    ? t
-                    : stageLabel(parcoursFilter, t);
+                    ? tb
+                    : stageLabel(parcoursFilter, tb);
             return (
               <button
-                key={t}
-                onClick={() => setTab(t)}
+                key={tb}
+                onClick={() => setTab(tb)}
                 className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                   active
                     ? "bg-brand-600 text-white"
@@ -464,7 +590,7 @@ export function LeadBoard({
                     active ? "bg-white/25 text-white" : "bg-ink-100 text-ink-600"
                   }`}
                 >
-                  {counts[t] ?? 0}
+                  {counts[tb] ?? 0}
                 </span>
               </button>
             );
@@ -475,19 +601,18 @@ export function LeadBoard({
       {/* List (scrollable so long lists don't push the page) */}
       <div className="mb-2 flex items-center justify-between px-1 text-xs text-ink-400">
         <span>
-          {visible.length} sur {leads.length} Trainee{leads.length === 1 ? "" : "s"}
+          {t("pipeline.listCount", {
+            visible: visible.length,
+            total: leads.length,
+            plural: leads.length === 1 ? "" : "s",
+          })}
         </span>
       </div>
       <div className="card max-h-[60vh] min-h-[160px] overflow-y-auto">
         {leads.length === 0 ? (
-          <p className="p-10 text-center text-ink-400">
-            Aucun Trainee pour l&apos;instant. Soumettez le formulaire
-            d&apos;inscription sur le site pour voir le pipeline se remplir.
-          </p>
+          <p className="p-10 text-center text-ink-400">{t("pipeline.emptyGlobal")}</p>
         ) : visible.length === 0 ? (
-          <p className="p-10 text-center text-ink-400">
-            Aucun Trainee ne correspond à vos filtres.
-          </p>
+          <p className="p-10 text-center text-ink-400">{t("pipeline.emptyFiltered")}</p>
         ) : (
           visible.map((l, i) => (
             <button
@@ -508,6 +633,11 @@ export function LeadBoard({
                   <span className={`badge ${stageTone(normalizeParcours(l), l.stage)}`}>
                     {stageLabel(normalizeParcours(l), l.stage)}
                   </span>
+                  {l.cancelled_at ? (
+                    <span className="badge bg-red-50 text-red-700">
+                      {t("pipeline.drawer.cancelledBadge")}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="mt-0.5 truncate text-[12.5px] text-ink-500">
                   {l.profession || "–"}
@@ -516,7 +646,7 @@ export function LeadBoard({
               </div>
               <div className="hidden min-w-0 sm:block">
                 <p className="truncate text-sm font-medium text-ink-700">
-                  {l.trainings?.title.fr ?? l.training_title_snapshot ?? "–"}
+                  {l.trainings?.title[lang] ?? l.trainings?.title.fr ?? l.training_title_snapshot ?? "–"}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-ink-400">
                   {l.trainings?.city ?? ""}
@@ -525,7 +655,7 @@ export function LeadBoard({
               <div className="flex items-center justify-end gap-3.5">
                 <span className="hidden items-center gap-1.5 text-xs text-ink-600 md:inline-flex">
                   <i className={`h-2 w-2 rounded-full ${INT_DOT[l.interest]}`} />
-                  {INTEREST_LABEL[l.interest]}
+                  {t(INTEREST_KEY[l.interest])}
                 </span>
                 <Icon
                   name="mail"
@@ -559,7 +689,7 @@ export function LeadBoard({
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label="Détail Trainee"
+        aria-label={t("pipeline.drawerAriaLabel")}
         className={`fixed right-0 top-0 z-50 flex h-screen w-[524px] max-w-[94vw] flex-col bg-white shadow-2xl transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         } motion-reduce:transition-none`}
@@ -601,6 +731,8 @@ function LeadDrawer({
   onClose: () => void;
   onDeleted: () => void;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   const [note, setNote] = useState("");
   const parcours = normalizeParcours(lead);
   const stages = stagesFor(parcours);
@@ -616,12 +748,12 @@ function LeadDrawer({
   const isBootcampRefund = parcours === "bootcamp" && lead.stage === "confirmed";
   const advanceText = isBootcampRefund
     ? advanceTarget === "deposit_refunded"
-      ? "Caution remboursée"
+      ? t("pipeline.drawer.depositRefundedShort")
       : lead.caution_waived
-        ? "Marquer terminé"
-        : "Terminer, caution conservée"
+        ? t("pipeline.drawer.markDoneShort")
+        : t("pipeline.drawer.closeDepositKept")
     : advance;
-  const t = lead.trainings;
+  const training = lead.trainings;
   const tsFor = (s: Stage) => {
     const f = STAGE_TS_FIELD[s];
     return f ? fmtDay(lead[f] as string | null | undefined) : "";
@@ -638,7 +770,7 @@ function LeadDrawer({
   const chat = [...lead.lead_comments].reverse();
 
   // Stage-specific gates + guidance.
-  const help = STAGE_HELP[parcours][lead.stage];
+  const help = STAGE_HELP[parcours][lead.stage]?.[lang];
   const isEligibilityGate = parcours === "bootcamp" && lead.stage === "prerequisites";
   const isElearningGate = parcours === "helpmesee" && lead.stage === "elearning_check";
 
@@ -684,11 +816,16 @@ function LeadDrawer({
             <span className={`badge ${stageTone(parcours, lead.stage)}`}>
               {stageLabel(parcours, lead.stage)}
             </span>
+            {lead.cancelled_at ? (
+              <span className="badge bg-red-50 text-red-700">
+                {t("pipeline.drawer.cancelledBadge")}
+              </span>
+            ) : null}
           </h2>
           <button
             onClick={onClose}
             className="rounded-lg px-2 py-0.5 text-xl leading-none text-ink-400 hover:bg-ink-50 hover:text-ink-700"
-            aria-label="Close"
+            aria-label={t("pipeline.drawer.close")}
           >
             ✕
           </button>
@@ -708,7 +845,7 @@ function LeadDrawer({
         {/* Workflow */}
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Workflow
+            {t("pipeline.drawer.workflow")}
           </p>
           <div className="relative flex items-start justify-between px-1">
             <div className="absolute left-[14%] right-[14%] top-[13px] h-0.5 bg-ink-200">
@@ -743,7 +880,7 @@ function LeadDrawer({
 
           {lead.lms_user_id ? (
             <p className="mt-3 text-xs font-medium text-emerald-600">
-              LMS provisioned · {lead.lms_user_id}
+              {t("pipeline.drawer.lmsProvisioned")} · {lead.lms_user_id}
             </p>
           ) : null}
 
@@ -751,11 +888,11 @@ function LeadDrawer({
           {help ? (
             <div className="mt-4 rounded-xl border border-brand-100 bg-brand-50/40 p-4">
               <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-brand-600">
-                Étape actuelle · {stageLabel(parcours, lead.stage)}
+                {t("pipeline.drawer.currentStep")} · {stageLabel(parcours, lead.stage)}
               </p>
               <p className="text-[13px] text-ink-700">{help.what}</p>
               <p className="mt-2 text-[12px] text-ink-500">
-                <span className="font-semibold text-ink-600">En attente de :</span> {help.waitingFor}
+                <span className="font-semibold text-ink-600">{t("pipeline.drawer.waitingFor")}</span> {help.waitingFor}
               </p>
 
               {/* HelpMeSee e-learning HARD GATE toggle */}
@@ -768,7 +905,7 @@ function LeadDrawer({
                       : "bg-amber-50 text-amber-700"
                   }`}
                 >
-                  {lead.elearning_completed ? "E-learning vérifié ✓" : "Marquer l'e-learning vérifié"}
+                  {lead.elearning_completed ? t("pipeline.drawer.elearningVerified") : t("pipeline.drawer.markElearningVerified")}
                 </button>
               ) : null}
 
@@ -779,9 +916,9 @@ function LeadDrawer({
                   className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
                     lead.caution_waived ? "bg-amber-50 text-amber-700" : "bg-ink-100 text-ink-500"
                   }`}
-                  title="Exception inscrit tardif : caution 200 € / contrat levés"
+                  title={t("pipeline.drawer.depositWaiverTitle")}
                 >
-                  {lead.caution_waived ? "Caution levée (exception)" : "Caution requise"}
+                  {lead.caution_waived ? t("pipeline.drawer.depositWaivedException") : t("pipeline.drawer.depositRequired")}
                 </button>
               ) : null}
 
@@ -792,9 +929,9 @@ function LeadDrawer({
                   className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
                     lead.attended ? "bg-emerald-50 text-emerald-700" : "bg-ink-100 text-ink-500"
                   }`}
-                  title="Formation suivie en intégralité (conditionne le remboursement)"
+                  title={t("pipeline.drawer.attendanceTitle")}
                 >
-                  {lead.attended ? "Présent · formation suivie" : "Présence non confirmée"}
+                  {lead.attended ? t("pipeline.drawer.attendedConfirmed") : t("pipeline.drawer.attendanceNotConfirmed")}
                 </button>
               ) : null}
 
@@ -802,7 +939,7 @@ function LeadDrawer({
               {isEligibilityGate ? (
                 <div className="mt-3 rounded-lg border border-ink-100 bg-white p-3">
                   <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">
-                    Contrat à envoyer (sélection automatique)
+                    {t("pipeline.drawer.contractAutoTitle")}
                   </p>
                   {matchedTemplate ? (
                     <>
@@ -812,10 +949,10 @@ function LeadDrawer({
                           {matchedTemplate.name}
                         </span>
                         {matchedTemplate.is_default ? (
-                          <span className="badge bg-ink-100 text-ink-500">Par défaut</span>
+                          <span className="badge bg-ink-100 text-ink-500">{t("pipeline.drawer.contractDefault")}</span>
                         ) : (
                           <span className="badge bg-emerald-50 text-emerald-700">
-                            Cours correspondant
+                            {t("pipeline.drawer.contractMatching")}
                           </span>
                         )}
                       </div>
@@ -826,11 +963,11 @@ function LeadDrawer({
                           rel="noreferrer"
                           className="btn-ghost mt-2 !py-1.5 !text-xs"
                         >
-                          Prévisualiser le contrat
+                          {t("pipeline.drawer.previewContract")}
                         </a>
                       ) : (
                         <p className="mt-1 text-[11px] text-ink-400">
-                          Aucun fichier à prévisualiser.
+                          {t("pipeline.drawer.noFilePreview")}
                         </p>
                       )}
                       <label className="mt-2.5 flex items-start gap-2 text-[13px] text-ink-700">
@@ -840,12 +977,12 @@ function LeadDrawer({
                           onChange={(e) => setContractApproved(e.target.checked)}
                           className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
                         />
-                        <span>J&apos;ai vérifié le contrat et j&apos;approuve son envoi.</span>
+                        <span>{t("pipeline.drawer.contractApproveLabel")}</span>
                       </label>
                     </>
                   ) : (
                     <p className="mt-1.5 text-[12px] text-red-600">
-                      Aucun contrat disponible pour ce cours. Ajoutez-en un dans « Contrats ».
+                      {t("pipeline.drawer.noContractAvailable")}
                     </p>
                   )}
                 </div>
@@ -860,7 +997,7 @@ function LeadDrawer({
                     onChange={(e) => setStepChecked(e.target.checked)}
                     className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
                   />
-                  <span>Confirmer : {help.waitingFor}</span>
+                  <span>{t("pipeline.drawer.confirmMilestone", { milestone: help.waitingFor })}</span>
                 </label>
               ) : null}
 
@@ -873,34 +1010,34 @@ function LeadDrawer({
                       disabled={!matchedTemplate || !contractApproved}
                       title={
                         !matchedTemplate
-                          ? "Aucun contrat disponible pour ce cours"
+                          ? t("pipeline.drawer.eligibilityOkNoContract")
                           : !contractApproved
-                            ? "Vérifiez et approuvez le contrat ci-dessus"
+                            ? t("pipeline.drawer.eligibilityOkNeedApproval")
                             : undefined
                       }
                       className="btn-primary !py-2 !text-sm disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Prérequis conformes →
+                      {t("pipeline.drawer.eligibilityOk")} →
                     </button>
                     <button
                       onClick={() => run(() => verifyEligibility(lead.id, false))}
                       className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
                     >
-                      Prérequis non conformes
+                      {t("pipeline.drawer.eligibilityNotOk")}
                     </button>
                   </>
                 ) : advance ? (
                   <button
                     onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
                     disabled={!advanceEnabled}
-                    title={!advanceEnabled ? "Confirmez d'abord l'étape ci-dessus" : undefined}
+                    title={!advanceEnabled ? t("pipeline.drawer.confirmFirstAbove") : undefined}
                     className="btn-primary !py-2 !text-sm disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {advanceText} →
                   </button>
                 ) : (
                   <span className="badge bg-emerald-50 text-emerald-700">
-                    <Icon name="check" className="h-3.5 w-3.5" /> Parcours terminé
+                    <Icon name="check" className="h-3.5 w-3.5" /> {t("pipeline.drawer.trackDone")}
                   </span>
                 )}
               </div>
@@ -920,7 +1057,7 @@ function LeadDrawer({
             >
               {INTEREST_LEVELS.map((i) => (
                 <option key={i} value={i}>
-                  {INTEREST_LABEL[i]}
+                  {t(INTEREST_KEY[i])}
                 </option>
               ))}
             </select>
@@ -933,15 +1070,42 @@ function LeadDrawer({
               }`}
             >
               <Icon name="mail" className="h-3.5 w-3.5" />
-              {lead.reminders_active ? "Reminders on" : "Reminders off"}
+              {lead.reminders_active ? t("pipeline.drawer.interestReminders") : t("pipeline.drawer.remindersOff")}
             </button>
-            {lead.interest !== "not_interested" ? (
+            {lead.interest !== "not_interested" && !lead.cancelled_at ? (
               <button
                 onClick={() => run(() => setNotInterested(lead.id))}
                 className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
-                title="Sortie du parcours"
+                title={t("pipeline.drawer.exitTitle")}
               >
-                Non intéressé
+                {t("pipeline.drawer.notInterested")}
+              </button>
+            ) : null}
+            {/* Cancel / reinstate — admin only. Cancel is for a REGISTERED
+                trainee who withdraws (distinct from "not interested"); no
+                refund is implied (deposit handled off-platform per SOP). */}
+            {isAdmin && !lead.cancelled_at ? (
+              <button
+                onClick={() => {
+                  const reason = window.prompt(t("pipeline.drawer.cancelPrompt"));
+                  if (reason === null) return; // dialog dismissed → abort
+                  run(() => cancelRegistration(lead.id, reason));
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-200"
+                title={t("pipeline.drawer.cancelTitle")}
+              >
+                {t("pipeline.drawer.cancel")}
+              </button>
+            ) : null}
+            {isAdmin && lead.cancelled_at ? (
+              <button
+                onClick={() => {
+                  if (confirm(t("pipeline.drawer.reinstateConfirm")))
+                    run(() => reinstateLead(lead.id));
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+              >
+                {t("pipeline.drawer.reinstate")}
               </button>
             ) : null}
           </div>
@@ -950,26 +1114,26 @@ function LeadDrawer({
         {/* Session & logistique */}
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Session &amp; logistique
+            {t("pipeline.drawer.sessionLogistics")}
           </p>
           <dl className="grid grid-cols-[104px_1fr] gap-x-3 gap-y-1.5 text-[13px]">
-            <dt className="text-ink-400">Session</dt>
+            <dt className="text-ink-400">{t("pipeline.drawer.session")}</dt>
             <dd className="text-ink-700">
-              {t?.title.fr ?? lead.training_title_snapshot ?? "–"}
+              {training?.title?.[lang] ?? training?.title?.fr ?? lead.training_title_snapshot ?? "–"}
             </dd>
-            <dt className="text-ink-400">Dates</dt>
+            <dt className="text-ink-400">{t("pipeline.drawer.dates")}</dt>
             <dd className="text-ink-700">
-              {t ? `${fmtRange(t.start_date, t.end_date)} · ${t.city}` : "–"}
+              {training ? `${fmtRange(training.start_date, training.end_date)} · ${training.city}` : "–"}
             </dd>
-            <dt className="text-ink-400">Tarif</dt>
+            <dt className="text-ink-400">{t("pipeline.drawer.price")}</dt>
             <dd className="text-ink-700">
-              {t
+              {training
                 ? parcours === "helpmesee"
-                  ? `${euro(t.price_eur)} · pris en charge par la fondation`
-                  : `${euro(t.price_eur)} · caution ${euro(t.deposit_eur)}`
+                  ? `${euro(training.price_eur)} · ${t("pipeline.drawer.priceFoundation")}`
+                  : `${euro(training.price_eur)} · ${t("pipeline.drawer.priceDeposit")} ${euro(training.deposit_eur)}`
                 : "–"}
             </dd>
-            <dt className="text-ink-400">Régime</dt>
+            <dt className="text-ink-400">{t("pipeline.drawer.diet")}</dt>
             <dd className="text-ink-700">{lead.dietary || "–"}</dd>
           </dl>
         </div>
@@ -978,7 +1142,7 @@ function LeadDrawer({
         {parcours === "bootcamp" ? (
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Financement
+            {t("pipeline.drawer.funding")}
           </p>
           {lead.funding === "sponsored" ? (
             <div className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3.5 py-3">
@@ -996,10 +1160,10 @@ function LeadDrawer({
               )}
               <div className="flex-1">
                 <p className="text-[13px] font-semibold text-ink-900">
-                  {lead.sponsor_name ?? "Sponsorisé"}
+                  {lead.sponsor_name ?? t("pipeline.drawer.sponsoredFallback")}
                 </p>
                 <p className="text-xs text-violet-700">
-                  Sponsorisé — logo affiché sur les communications (Règle 1)
+                  {t("pipeline.drawer.sponsoredNote")}
                 </p>
               </div>
             </div>
@@ -1009,10 +1173,10 @@ function LeadDrawer({
                 <Icon name="clipboard-check" className="h-4 w-4" />
               </div>
               <div className="flex-1">
-                <p className="text-[13px] font-semibold text-ink-900">Autofinancé</p>
+                <p className="text-[13px] font-semibold text-ink-900">{t("pipeline.drawer.selfFunded")}</p>
                 <p className="text-xs text-ink-500">
-                  Tarif trainee affiché sur les communications
-                  {t ? ` · ${euro(t.price_eur)}` : ""}
+                  {t("pipeline.drawer.selfFundedNote")}
+                  {training ? ` · ${euro(training.price_eur)}` : ""}
                 </p>
               </div>
             </div>
@@ -1024,14 +1188,14 @@ function LeadDrawer({
         {parcours === "helpmesee" ? (
           <div className="border-b border-ink-100 px-6 py-5">
             <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-              Fondation
+              {t("pipeline.drawer.foundation")}
             </p>
             <dl className="grid grid-cols-[104px_1fr] gap-x-3 gap-y-1.5 text-[13px]">
-              <dt className="text-ink-400">Financement</dt>
-              <dd className="text-ink-700">Fondation HelpMeSee · facture</dd>
-              <dt className="text-ink-400">Référence</dt>
+              <dt className="text-ink-400">{t("pipeline.drawer.funding")}</dt>
+              <dd className="text-ink-700">{t("pipeline.drawer.foundationFunding")}</dd>
+              <dt className="text-ink-400">{t("pipeline.drawer.reference")}</dt>
               <dd className="text-ink-700">{lead.helpmesee_ref || "–"}</dd>
-              <dt className="text-ink-400">Coordinateur</dt>
+              <dt className="text-ink-400">{t("pipeline.drawer.coordinator")}</dt>
               <dd className="text-ink-700">{lead.coordinator || "–"}</dd>
             </dl>
           </div>
@@ -1046,7 +1210,7 @@ function LeadDrawer({
           <>
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Engagement contract
+            {t("pipeline.drawer.engagementContract")}
           </p>
           <div className="flex items-center gap-3 rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3">
             <div className="grid h-9 w-9 place-items-center rounded-lg border border-ink-200 bg-white text-ink-500">
@@ -1054,12 +1218,12 @@ function LeadDrawer({
             </div>
             <div className="flex-1">
               <p className="text-[13px] font-semibold text-ink-900">
-                {lead.contract_template?.name ?? "No contract attached yet"}
+                {lead.contract_template?.name ?? t("pipeline.drawer.noContractYet")}
               </p>
               <p className="text-xs text-ink-500">
                 {lead.contract_template
-                  ? "Selected from the platform templates."
-                  : "Attaches automatically when the deposit is marked paid."}
+                  ? t("pipeline.drawer.contractFromTemplates")
+                  : t("pipeline.drawer.contractAutoAttach")}
               </p>
             </div>
             {lead.contract_template?.file_url && publicBase ? (
@@ -1069,30 +1233,30 @@ function LeadDrawer({
                 rel="noreferrer"
                 className="btn-ghost !py-1.5 !text-xs"
               >
-                View
+                {t("pipeline.drawer.view")}
               </a>
             ) : null}
           </div>
           {templates.length > 0 ? (
             <div className="mt-2.5 flex items-center gap-2">
-              <span className="text-[11px] text-ink-500">Template:</span>
+              <span className="text-[11px] text-ink-500">{t("pipeline.drawer.template")}</span>
               <select
                 value={lead.contract_template_id ?? ""}
                 onChange={(e) => run(() => setLeadContractTemplate(lead.id, e.target.value))}
                 className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs text-ink-700"
               >
-                <option value="">– none –</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.is_default ? " (default)" : ""}
+                <option value="">{t("pipeline.drawer.noneOption")}</option>
+                {templates.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.name}
+                    {tpl.is_default ? t("pipeline.drawer.defaultSuffix") : ""}
                   </option>
                 ))}
               </select>
             </div>
           ) : (
             <p className="mt-2 text-[11px] text-ink-400">
-              No templates yet. Add them in Contract templates (admin).
+              {t("pipeline.drawer.noTemplatesYet")}
             </p>
           )}
         </div>
@@ -1100,7 +1264,7 @@ function LeadDrawer({
         {/* Documents (the signed copy returned by the lead) */}
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Signed document
+            {t("pipeline.drawer.signedDocument")}
           </p>
           <DocState lead={lead} />
         </div>
@@ -1110,12 +1274,11 @@ function LeadDrawer({
         {/* Communications — the emails fired on each stage transition */}
         <div className="border-b border-ink-100 px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Communications
+            {t("pipeline.drawer.communications")}
           </p>
           {emails.length === 0 ? (
             <p className="text-[13px] text-ink-400">
-              Aucun email pour l&apos;instant. Un email est généré et enregistré
-              automatiquement à chaque changement d&apos;étape.
+              {t("pipeline.drawer.noEmailsYet")}
             </p>
           ) : (
             <div className="space-y-2">
@@ -1153,24 +1316,24 @@ function LeadDrawer({
         {/* Comments */}
         <div className="px-6 py-5">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            Comments
+            {t("pipeline.drawer.comments")}
           </p>
           <div className="space-y-3">
             {lead.notes ? (
               <div>
-                <p className="mb-1 text-[11px] text-ink-400">From the registrant</p>
+                <p className="mb-1 text-[11px] text-ink-400">{t("pipeline.drawer.fromRegistrant")}</p>
                 <p className="rounded-lg border border-ink-100 bg-ink-50 px-3 py-2 text-[13px] italic text-ink-600">
                   “{lead.notes}”
                 </p>
               </div>
             ) : null}
             {chat.length === 0 && !lead.notes ? (
-              <p className="text-[13px] text-ink-400">No follow-up notes yet.</p>
+              <p className="text-[13px] text-ink-400">{t("pipeline.drawer.noNotesYet")}</p>
             ) : null}
             {chat.map((c) => (
               <div key={c.id}>
                 <p className="mb-1 text-[11px] text-ink-400">
-                  {fmtDay(c.created_at)} · {c.author ?? "Staff"}
+                  {fmtDay(c.created_at)} · {c.author ?? t("pipeline.drawer.staffFallback")}
                 </p>
                 <p className="rounded-lg border border-ink-100 bg-ink-50 px-3 py-2 text-[13px] text-ink-700">
                   {c.body}
@@ -1187,23 +1350,23 @@ function LeadDrawer({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendNote()}
-          placeholder="Write a follow-up note…"
+          placeholder={t("pipeline.drawer.notePlaceholder")}
           className="input"
         />
         <button onClick={sendNote} className="btn-primary !py-2 !text-sm">
-          Send
+          {t("pipeline.drawer.send")}
         </button>
         {isAdmin ? (
           <button
             onClick={() => {
-              if (confirm(`Supprimer le Trainee ${lead.first_name} ${lead.last_name} ?`)) {
+              if (confirm(t("pipeline.drawer.deleteTraineeConfirm", { name: `${lead.first_name} ${lead.last_name}` }))) {
                 run(() => deleteLead(lead.id));
                 onDeleted();
               }
             }}
             className="rounded-xl px-2.5 py-2 text-sm text-red-500 hover:bg-red-50"
-            title="Admin only"
-            aria-label="Supprimer le Trainee"
+            title={t("pipeline.drawer.adminOnly")}
+            aria-label={t("pipeline.drawer.deleteTrainee")}
           >
             ✕
           </button>
@@ -1231,6 +1394,7 @@ function FilterRow({
 }
 
 function DocState({ lead }: { lead: Lead }) {
+  const t = useT();
   const router = useRouter();
   const [busy, startBusy] = useTransition();
   const [file, setFile] = useState<File | null>(null);
@@ -1245,17 +1409,17 @@ function DocState({ lead }: { lead: Lead }) {
 
   const state = doc
     ? doc.verified
-      ? { text: "Signé & vérifié. Place confirmée.", pill: "Verified", tone: "bg-emerald-50 text-emerald-700" }
+      ? { text: t("pipeline.doc.verifiedText"), pill: t("pipeline.doc.verifiedPill"), tone: "bg-emerald-50 text-emerald-700" }
       : {
-          text: `Chargé & signé (${doc.sign_channel ?? "manual"}), en attente de vérification.`,
-          pill: "Pending verification",
+          text: t("pipeline.doc.pendingText", { channel: doc.sign_channel ?? "manual" }),
+          pill: t("pipeline.doc.pendingPill"),
           tone: "bg-amber-50 text-amber-700",
         }
     : confirmedOrLater
-      ? { text: "Aucun document en attente à ce stade.", pill: "None", tone: "bg-ink-100 text-ink-500" }
+      ? { text: t("pipeline.doc.nonePastStageText"), pill: t("pipeline.doc.nonePill"), tone: "bg-ink-100 text-ink-500" }
       : lead.stage === "lead"
-        ? { text: "Envoyé au lead après les premières étapes du parcours.", pill: "Not sent", tone: "bg-ink-100 text-ink-500" }
-        : { text: "En attente du document d'engagement signé.", pill: "Awaiting signature", tone: "bg-amber-50 text-amber-700" };
+        ? { text: t("pipeline.doc.notSentText"), pill: t("pipeline.doc.notSentPill"), tone: "bg-ink-100 text-ink-500" }
+        : { text: t("pipeline.doc.awaitingText"), pill: t("pipeline.doc.awaitingPill"), tone: "bg-amber-50 text-amber-700" };
 
   const view = () =>
     startBusy(async () => {
@@ -1293,7 +1457,7 @@ function DocState({ lead }: { lead: Lead }) {
           <Icon name="clipboard-check" className="h-4 w-4" />
         </div>
         <div className="flex-1">
-          <p className="text-[13px] font-semibold text-ink-900">Engagement document</p>
+          <p className="text-[13px] font-semibold text-ink-900">{t("pipeline.doc.title")}</p>
           <p className="text-xs text-ink-500">{state.text}</p>
         </div>
         <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${state.tone}`}>
@@ -1305,11 +1469,11 @@ function DocState({ lead }: { lead: Lead }) {
       {doc ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
           <button onClick={view} className="btn-ghost !py-1.5 !text-xs">
-            📄 View signed document
+            {t("pipeline.doc.viewSigned")}
           </button>
           {!doc.verified ? (
             <button onClick={verify} className="btn-primary !py-1.5 !text-xs">
-              Verify &amp; confirm seat →
+              {t("pipeline.doc.verifyConfirm")}
             </button>
           ) : null}
         </div>
@@ -1317,7 +1481,7 @@ function DocState({ lead }: { lead: Lead }) {
         /* No document → staff uploads the signed doc the lead returned */
         <div className="mt-2.5">
           <label className="mb-1 block text-[11px] font-medium text-ink-500">
-            Upload the signed engagement document
+            {t("pipeline.doc.uploadLabel")}
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -1331,11 +1495,11 @@ function DocState({ lead }: { lead: Lead }) {
               disabled={!file || busy}
               className="btn-primary !py-1.5 !text-xs disabled:opacity-50"
             >
-              Upload &amp; mark signed
+              {t("pipeline.doc.uploadButton")}
             </button>
           </div>
           <p className="mt-1.5 text-[11px] text-ink-400">
-            Online e-signing (Documenso) attaches here automatically once n8n is wired.
+            {t("pipeline.doc.onlineSigningNote")}
           </p>
         </div>
       ) : null}

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { LanguageProvider } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: "Gepromed AI Console",
@@ -30,8 +31,10 @@ export default function RootLayout({
     // inject attributes onto <html>/<body> before React hydrates, which would
     // otherwise trigger a hydration-attribute-mismatch warning. Scoped to these
     // two elements only — it does not hide real mismatches elsewhere.
-    <html lang="en" translate="no" className="notranslate" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+    <html lang="fr" translate="no" className="notranslate" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

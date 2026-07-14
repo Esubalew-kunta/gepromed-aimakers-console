@@ -523,6 +523,11 @@ function ReviewTable({
 }) {
   const active = result.expenses.filter((e) => !e.duplicateOfId && !e.idempotentSkip);
   const excluded = result.expenses.filter((e) => e.duplicateOfId || e.idempotentSkip);
+  // Render every row through ONE map with an identical cell structure (active
+  // first, then excluded). Toggling "inclure quand même" only flips content/
+  // styling — never the number or shape of <td> cells — so React never has to
+  // swap a colSpan row for a full row (the cause of the removeChild crash).
+  const ordered = [...active, ...excluded];
 
   return (
     <div className="space-y-4">
@@ -574,176 +579,207 @@ function ReviewTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
-            {active.map((e) => (
-              <tr key={`active-${e.id}`} className={e.needsReview ? "bg-amber-50/50" : ""}>
-                <td className="px-2.5 py-2 text-ink-500">{e.sourceFile}</td>
-                <td className="px-2.5 py-2">
-                  <select
-                    value={e.category ?? ""}
-                    onChange={(ev) => onPatch(e.id, { category: (ev.target.value || null) as CategoryKey | null })}
-                    className="rounded border border-ink-200 px-1.5 py-1"
-                  >
-                    <option value="">– à choisir –</option>
-                    {CATEGORY_KEYS.map((k) => (
-                      <option key={k} value={k}>{CATEGORY_COLUMN[k].label}</option>
-                    ))}
-                  </select>
-                </td>
-                {MATRICE_HEADERS.map((h) => {
-                  if (h === "Date") {
+            {ordered.map((e) => {
+              const isExcluded = Boolean(e.duplicateOfId || e.idempotentSkip);
+              const rowClass = isExcluded
+                ? "bg-ink-50/60 text-ink-400"
+                : e.needsReview
+                  ? "bg-amber-50/50"
+                  : "";
+              const excludedTitle = e.duplicateOfId
+                ? "Doublon détecté dans ce lot, compté une seule fois. Cliquez « inclure quand même » pour l'écrire à nouveau."
+                : "Déjà présent dans le fichier maître (traité précédemment). Cliquez « inclure quand même » pour l'écrire à nouveau.";
+              return (
+                <tr key={e.id} className={rowClass} title={isExcluded ? excludedTitle : undefined}>
+                  <td className="px-2.5 py-2 text-ink-500">{e.sourceFile}</td>
+                  <td className="px-2.5 py-2">
+                    {isExcluded ? (
+                      categoryLabel(e.category)
+                    ) : (
+                      <select
+                        value={e.category ?? ""}
+                        onChange={(ev) => onPatch(e.id, { category: (ev.target.value || null) as CategoryKey | null })}
+                        className="rounded border border-ink-200 px-1.5 py-1"
+                      >
+                        <option value="">– à choisir –</option>
+                        {CATEGORY_KEYS.map((k) => (
+                          <option key={k} value={k}>{CATEGORY_COLUMN[k].label}</option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  {MATRICE_HEADERS.map((h) => {
+                    if (h === "Date") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.issueDateLabel || "–"
+                          ) : (
+                            <input
+                              value={e.issueDateLabel || ""}
+                              onChange={(ev) => onPatch(e.id, { issueDateLabel: ev.target.value })}
+                              className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "Etude") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.etude || "–"
+                          ) : (
+                            <input
+                              value={e.etude || ""}
+                              onChange={(ev) => onPatch(e.id, { etude: ev.target.value || null })}
+                              placeholder="—"
+                              title="Non extrait par l'IA — saisie manuelle"
+                              className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "Objet") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.purpose || "–"
+                          ) : (
+                            <input
+                              value={e.purpose || ""}
+                              onChange={(ev) => onPatch(e.id, { purpose: ev.target.value })}
+                              className="w-36 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "Lieu du déplacement") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.location || "–"
+                          ) : (
+                            <input
+                              value={e.location || ""}
+                              onChange={(ev) => onPatch(e.id, { location: ev.target.value })}
+                              className="w-32 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "TVA récupérable") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.vatRecoverable ?? "–"
+                          ) : (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={e.vatRecoverable ?? ""}
+                              onChange={(ev) => onPatch(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
+                              className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "Kilomètres") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.distanceKm ?? "–"
+                          ) : (
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={e.distanceKm ?? ""}
+                              onChange={(ev) => onPatch(e.id, { distanceKm: ev.target.value === "" ? null : Number(ev.target.value) })}
+                              title="Distance réelle (si indiquée sur le justificatif) — calcule le remboursement via le barème du fichier maître"
+                              className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "Devise de dépense") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            e.originalCurrency || "–"
+                          ) : (
+                            <input
+                              value={e.originalCurrency || ""}
+                              onChange={(ev) => onPatch(e.id, { originalCurrency: ev.target.value || null })}
+                              className="w-16 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (h === "Total") {
+                      return (
+                        <td key={h} className="px-2.5 py-2">
+                          {isExcluded ? (
+                            <span className="font-medium">{eur(e.amountEUR)}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={e.amountEUR ?? ""}
+                              onChange={(ev) => onPatch(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
+                              className="w-24 rounded border border-ink-200 px-1.5 py-1"
+                            />
+                          )}
+                          {e.fx && (
+                            <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR, ${e.fx.source} ${e.fx.rateDate}`}>
+                              @ {e.fx.rate} ({e.fx.source})
+                            </div>
+                          )}
+                        </td>
+                      );
+                    }
+                    // The 10 category-amount columns (Billet d'avion .. Divers,
+                    // including Remboursement du kilométrage for mileage).
+                    const owningCategory = HEADER_TO_CATEGORY[h];
+                    const isThisRowsCategory = owningCategory && e.category === owningCategory;
                     return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          value={e.issueDateLabel || ""}
-                          onChange={(ev) => onPatch(e.id, { issueDateLabel: ev.target.value })}
-                          className="w-24 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "Etude") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          value={e.etude || ""}
-                          onChange={(ev) => onPatch(e.id, { etude: ev.target.value || null })}
-                          placeholder="—"
-                          title="Non extrait par l'IA — saisie manuelle"
-                          className="w-24 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "Objet") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          value={e.purpose || ""}
-                          onChange={(ev) => onPatch(e.id, { purpose: ev.target.value })}
-                          className="w-36 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "Lieu du déplacement") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          value={e.location || ""}
-                          onChange={(ev) => onPatch(e.id, { location: ev.target.value })}
-                          className="w-32 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "TVA récupérable") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={e.vatRecoverable ?? ""}
-                          onChange={(ev) => onPatch(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
-                          className="w-16 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "Kilomètres") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={e.distanceKm ?? ""}
-                          onChange={(ev) => onPatch(e.id, { distanceKm: ev.target.value === "" ? null : Number(ev.target.value) })}
-                          title="Distance réelle (si indiquée sur le justificatif) — calcule le remboursement via le barème du fichier maître"
-                          className="w-16 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "Devise de dépense") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          value={e.originalCurrency || ""}
-                          onChange={(ev) => onPatch(e.id, { originalCurrency: ev.target.value || null })}
-                          className="w-16 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                      </td>
-                    );
-                  }
-                  if (h === "Total") {
-                    return (
-                      <td key={h} className="px-2.5 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={e.amountEUR ?? ""}
-                          onChange={(ev) => onPatch(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
-                          className="w-24 rounded border border-ink-200 px-1.5 py-1"
-                        />
-                        {e.fx && (
-                          <div className="text-[10px] text-ink-400" title={`Taux ${e.fx.rate} ${e.fx.originalCurrency}/EUR, ${e.fx.source} ${e.fx.rateDate}`}>
-                            @ {e.fx.rate} ({e.fx.source})
-                          </div>
+                      <td key={h} className="px-2.5 py-2 text-center">
+                        {isThisRowsCategory ? (
+                          <span className={isExcluded ? "font-medium" : "font-medium text-ink-900"}>{eur(e.amountEUR)}</span>
+                        ) : (
+                          <span className="text-ink-300">–</span>
                         )}
                       </td>
                     );
-                  }
-                  // The 10 category-amount columns (Billet d'avion .. Divers,
-                  // including Remboursement du kilométrage for mileage).
-                  const owningCategory = HEADER_TO_CATEGORY[h];
-                  const isThisRowsCategory = owningCategory && e.category === owningCategory;
-                  return (
-                    <td key={h} className="px-2.5 py-2 text-center">
-                      {isThisRowsCategory ? (
-                        <span className="font-medium text-ink-900">{eur(e.amountEUR)}</span>
-                      ) : (
-                        <span className="text-ink-300">–</span>
-                      )}
-                    </td>
-                  );
-                })}
-                <td className="px-2.5 py-2 font-mono text-[10px] text-ink-400">{e.docKey}</td>
-                <td className="px-2.5 py-2">
-                  {e.needsReview ? (
-                    <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title={e.reviewReasons.join(" · ")}>
-                      à vérifier
-                    </span>
-                  ) : (
-                    <span className="inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">ok</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {excluded.map((e) => (
-              <tr key={`excluded-${e.id}`} className="bg-ink-50/60 text-ink-400">
-                <td className="px-2.5 py-2">{e.sourceFile}</td>
-                <td className="px-2.5 py-2">{categoryLabel(e.category)}</td>
-                <td className="px-2.5 py-2">{e.issueDateLabel || "–"}</td>
-                <td className="px-2.5 py-2">{e.purpose || "–"}</td>
-                <td className="px-2.5 py-2">{e.location || "–"}</td>
-                <td className="px-2.5 py-2" colSpan={MATRICE_HEADERS.length - 3}>
-                  <span className="font-medium">{eur(e.amountEUR)}</span> ·{" "}
-                  {e.duplicateOfId ? "doublon détecté dans ce lot, compté une seule fois" : "déjà présent dans le fichier maître (traité précédemment)"}
-                  — vérifiez puis incluez si vous voulez quand même l'écrire à nouveau.
-                </td>
-                <td className="px-2.5 py-2 font-mono text-[10px]">{e.docKey}</td>
-                <td className="px-2.5 py-2">
-                  <button
-                    type="button"
-                    onClick={() => onPatch(e.id, { duplicateOfId: null, idempotentSkip: false })}
-                    className="inline-block whitespace-nowrap rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-700 hover:bg-ink-300"
-                    title="Ce justificatif a été détecté comme déjà traité ou doublon. Cliquez pour l'inclure quand même dans l'écriture."
-                  >
-                    inclure quand même
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {active.length === 0 && excluded.length === 0 && (
+                  })}
+                  <td className="px-2.5 py-2 font-mono text-[10px] text-ink-400">{e.docKey}</td>
+                  <td className="px-2.5 py-2">
+                    {isExcluded ? (
+                      <button
+                        type="button"
+                        onClick={() => onPatch(e.id, { duplicateOfId: null, idempotentSkip: false })}
+                        className="inline-block whitespace-nowrap rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-700 hover:bg-ink-300"
+                        title={excludedTitle}
+                      >
+                        inclure quand même
+                      </button>
+                    ) : e.needsReview ? (
+                      <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title={e.reviewReasons.join(" · ")}>
+                        à vérifier
+                      </span>
+                    ) : (
+                      <span className="inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">ok</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {ordered.length === 0 && (
               <tr>
                 <td colSpan={MATRICE_HEADERS.length + 4} className="px-2.5 py-8 text-center text-ink-400">
                   Aucun justificatif exploitable dans ce lot.

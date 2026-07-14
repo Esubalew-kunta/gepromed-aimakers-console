@@ -141,3 +141,33 @@ Register on the site → automated deposit email · daily reminders (idempotent,
 
 ## Deferred (say the word to add)
 Engagement-doc email with the 2 signing buttons (on `deposit_paid`) · Documenso online signing + its webhook · pre-course welcome (schedule) · error-alert workflow · public upload page.
+
+---
+
+## PART E — Engineering "Send via n8n" (workflow `12-engineering-stage-email.json`)
+
+Powers the **Send via n8n** button in the console's Engineering request drawer. Unlike the
+trainee emails (which look up + render a DB template), the console already renders the
+staff-**edited** subject/body, so this workflow just relays it to Gmail.
+
+1. **Import** `n8n/12-engineering-stage-email.json`.
+2. Open the **"Send engineering email"** (Gmail) node → set its credential. **Sender = the same
+   Google account as the expense Sheet export: `amraoui.cabinet.test@gmail.com`.**
+   ⚠️ The Sheet export uses a **Google *Sheets* OAuth2** credential — a Gmail node **cannot** use
+   it (different credential type + no `gmail.send` scope). So add a **Gmail OAuth2** credential
+   authorized as *that same* `amraoui.cabinet.test@gmail.com` account (one-time Google sign-in)
+   and select it here. Emails then send **from the same mailbox that owns the sheet**.
+3. **Activate** the workflow, then copy its **Production** webhook URL
+   (`https://<your-n8n>/webhook/send-eng-email`).
+4. Set it as **`ENG_EMAIL_WEBHOOK_URL`** in the console's `.env.local` (and on Render for prod).
+   Until this is set, the Send button stays inert and shows "n8n send not configured" — Copy /
+   open-in-mail still work.
+5. *(Optional, recommended)* add **Header Auth** on the Webhook node checking `x-webhook-secret`
+   against your `N8N_WEBHOOK_SECRET` so only the console can call it.
+
+**Payload the console POSTs:** `{ requestId, ref, to, subject, body }` → the Gmail node maps
+`to`/`subject`/`body` from `$json.body`. On success the console logs a "📧 Email sent to …"
+audit comment on the request.
+
+✅ **Check:** open an engineering request at an emailing stage → edit if needed → **Send via
+n8n** → the requester receives it and the drawer shows "Sent ✓".

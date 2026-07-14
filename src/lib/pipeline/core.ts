@@ -12,23 +12,39 @@
  * Pure + client-safe: no server-only imports, no side effects.
  */
 
+/** Local 2-value language union (kept standalone so core stays dependency-free). */
+export type Lang = "fr" | "en";
+
+/**
+ * A label that is either a plain string (legacy / French-only, e.g. the trainee
+ * pipeline) or a `{fr,en}` pair (engineering). `loc()` resolves it for a lang;
+ * the label helpers below take an optional `lang` (default "fr") so existing
+ * single-string callers keep the exact behaviour they had before.
+ */
+export type Localized = string | { fr: string; en: string };
+
+export function loc(v: Localized | null | undefined, lang: Lang = "fr"): string {
+  if (v == null) return "";
+  return typeof v === "string" ? v : v[lang] ?? v.fr;
+}
+
 export interface StageDef {
   /** Stable id persisted in the DB `stage` column. */
   id: string;
-  /** FR label shown on stage badges. */
-  label: string;
+  /** Label shown on stage badges (string = FR-only, or `{fr,en}`). */
+  label: Localized;
   /** Short cap shown under stepper nodes. */
-  short: string;
+  short: Localized;
   /** Tailwind badge classes. */
   tone: string;
   /** Button label that advances to the NEXT stage (null = terminal stage). */
-  advanceLabel: string | null;
+  advanceLabel: Localized | null;
 }
 
 export interface VariantDef {
   /** Stable id persisted in the DB `parcours` / `variant` column. */
   key: string;
-  label: string;
+  label: Localized;
   tone: string;
   /** Ordered stages for this variant. */
   stages: StageDef[];
@@ -37,8 +53,8 @@ export interface VariantDef {
 export interface PipelineDef {
   /** 'trainee' | 'explant' | 'test' | 'equipment' … */
   kind: string;
-  /** Module label, e.g. "Trainees management". */
-  label: string;
+  /** Module label, e.g. "Trainees management" (string = FR-only, or `{fr,en}`). */
+  label: Localized;
   variants: VariantDef[];
   /** Variant used for a row that has none set yet. */
   defaultVariantKey: string;
@@ -77,12 +93,24 @@ export function findStage(
   return getVariant(def, variantKey).stages.find((s) => s.id === stageId);
 }
 
-export function stageLabelOf(def: PipelineDef, variantKey: string, stageId: string): string {
-  return findStage(def, variantKey, stageId)?.label ?? stageId;
+export function stageLabelOf(
+  def: PipelineDef,
+  variantKey: string,
+  stageId: string,
+  lang: Lang = "fr",
+): string {
+  const s = findStage(def, variantKey, stageId);
+  return s ? loc(s.label, lang) : stageId;
 }
 
-export function stageShortOf(def: PipelineDef, variantKey: string, stageId: string): string {
-  return findStage(def, variantKey, stageId)?.short ?? stageId;
+export function stageShortOf(
+  def: PipelineDef,
+  variantKey: string,
+  stageId: string,
+  lang: Lang = "fr",
+): string {
+  const s = findStage(def, variantKey, stageId);
+  return s ? loc(s.short, lang) : stageId;
 }
 
 export function stageToneOf(def: PipelineDef, variantKey: string, stageId: string): string {
@@ -93,8 +121,15 @@ export function advanceLabelOf(
   def: PipelineDef,
   variantKey: string,
   stageId: string,
+  lang: Lang = "fr",
 ): string | null {
-  return findStage(def, variantKey, stageId)?.advanceLabel ?? null;
+  const v = findStage(def, variantKey, stageId)?.advanceLabel;
+  return v == null ? null : loc(v, lang);
+}
+
+/** Resolve a variant's display label for a language. */
+export function variantLabelOf(def: PipelineDef, variantKey: string, lang: Lang = "fr"): string {
+  return loc(getVariant(def, variantKey).label, lang);
 }
 
 /** The next stage id in the variant's order (null if terminal / unknown). */

@@ -1,0 +1,45 @@
+{
+  "name": "Gepromed · Engineering stage email",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-eng-email",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "App · send eng email",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "send-eng-email",
+      "notes": "Called by the AI Console 'Send via n8n' button. Payload: { requestId, ref, to, subject, body }. Optional: add Header Auth on this node checking x-webhook-secret against N8N_WEBHOOK_SECRET."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.body.to }}",
+        "subject": "={{ $json.body.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body.body }}",
+        "options": {}
+      },
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "name": "Send engineering email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [240, 0],
+      "credentials": {
+        "gmailOAuth2": { "id": "REPLACE_WITH_GMAIL_CRED", "name": "Gmail (amraoui.cabinet.test@gmail.com)" }
+      },
+      "notes": "Sender = the SAME Google account as the expense Sheet export (amraoui.cabinet.test@gmail.com). The Sheet uses a Google SHEETS OAuth2 credential, which a Gmail node cannot use (different type/scope), so add a GMAIL OAuth2 credential authorized as that same amraoui.cabinet.test@gmail.com account and select it here. The requester address, subject and body come from the console (staff-reviewed). For SMTP instead, swap this for a 'Send Email' node."
+    }
+  ],
+  "connections": {
+    "App · send eng email": {
+      "main": [[{ "node": "Send engineering email", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

@@ -5,6 +5,145 @@
 
 ---
 
+## 2026-07-14 — Session 3 (Engineering — real n8n "Send" button wired)
+
+Extended the stage-email work (entry below) from staff-assist (copy / open-in-mail) to a real
+**"Send via n8n"** button, per user choice "build app+n8n, I'll add creds" + sender = "a Gmail
+I'll provide".
+
+- **`sendEngEmail(input)`** server action in `engineering/actions.ts` — POSTs
+  `{requestId, ref, to, subject, body}` to `process.env.ENG_EMAIL_WEBHOOK_URL` with
+  `x-webhook-secret: N8N_WEBHOOK_SECRET` (mirrors the expense `pushToGoogleSheet` pattern:
+  env-gated, never throws). Sends the staff-EDITED subject/body (review-then-send). On success
+  logs a best-effort "📧 Email sent to …" audit comment. Returns `{ok, reason}` where reason
+  `not_configured` (env unset) / `unreachable` / `http_<code>`.
+- **`EngineeringDrawer.tsx` StageEmail** — added a **Send via n8n** button + status line
+  (Sending… / Sent ✓ / Send failed / not-configured hint) alongside Copy & open-in-mail.
+- **i18n:** `engineering.drawer.emailSend/emailSending/emailSent/emailFailed/emailNotConfigured`.
+- **Env:** documented `ENG_EMAIL_WEBHOOK_URL` in `.env.example`.
+- **n8n:** new importable workflow `n8n/12-engineering-stage-email.json` (Webhook `send-eng-email`
+  → Gmail node, `responseMode:lastNode`) + PART E setup section in `n8n/SETUP.md`. `npx tsc
+  --noEmit` clean.
+- **Sender account (user request):** send from the SAME Google account as the expense Sheet
+  export = **amraoui.cabinet.test@gmail.com**. ⚠️ Caveat surfaced: the Sheet uses a Google
+  *Sheets* OAuth2 cred (`8PEKj6IgXd5bbiJq`), which a Gmail node CANNOT reuse (different type +
+  no gmail.send scope). So the workflow needs a **Gmail OAuth2** cred authorized as that same
+  amraoui.cabinet.test@gmail.com account (one-time OAuth). JSON note + SETUP PART E updated to
+  say exactly this.
+
+**✅ TESTED LIVE (2026-07-14):** activated the workflow (publish_workflow) and POSTed a rendered
+explant email to `…/webhook/send-eng-email` → HTTP 200, Gmail returned `labelIds:["SENT"]`,
+message id `19f625c3dd42e722`, delivered to yikeber50@gmail.com. Full chain proven:
+console template → n8n webhook → Gmail send. Workflow is now **active**.
+
+**CREATED LIVE in n8n via MCP (2026-07-14):** workflow id **`vHOqbloEaCJkI8dQ`**
+("Gepromed · Engineering stage email") in the *Esubalew Kunta* personal project on
+`othmaneaimakers.app.n8n.cloud`. Webhook `POST /webhook/send-eng-email` (responseMode lastNode)
+→ Gmail send (v2.2, emailType text, appendAttribution off). ⚠️ n8n **auto-assigned** an existing
+Gmail credential named **"Gmail account"** — VERIFY it's the intended sender
+(amraoui.cabinet.test@gmail.com); swap if not. Workflow is **inactive** until activated.
+
+**To make Send live (user's part):** open the workflow → verify/swap the Gmail credential →
+**Activate** → copy the production `https://othmaneaimakers.app.n8n.cloud/webhook/send-eng-email`
+URL into `ENG_EMAIL_WEBHOOK_URL` (`.env.local` + Render). Until then the console button shows
+"n8n send not configured" and Copy / open-in-mail still work. (Repo file
+`n8n/12-engineering-stage-email.json` remains as the importable source of truth.)
+
+**Also this session:** created **3 real live requests** via the anon intake RPC for browser
+testing — ENG-000013 (explant, yikeber50@gmail.com), ENG-000014 (test, yikecyber@gmail.com),
+ENG-000015 (equipment, yikebermisganaw@gmail.com). Confirms the live create→persist→read path
+works end-to-end. (Delete when done testing.)
+
+---
+
+## 2026-07-14 — Session 3 (Engineering — Phase 5 kickoff: bilingual stage emails)
+
+After the parity build (entry below), discussed the *real-need* gap vs. the master plan
+(MP Phase 5 + open Qs Q5-Q7) and folded a **Phase 5 plan + per-stage remainder audit** into
+`ENGINEERING_PARITY_PLAN.md`. Then built the **first Tier-1 piece: polished bilingual stage
+emails** (staff-assist tier — ships now, no email infra needed).
+
+- **New `src/lib/pipeline/engineering-emails.ts`** — pure module: FR/EN `EmailTemplate` per
+  📧 stage from the audit (explant: prospection/reception/first_report/follow_up · test:
+  request/report/done · equipment: request/scheduled), `getStageEmail(kind,stage)` +
+  `fillEmail(tpl,lang,vars)` interpolating `{name}`/`{ref}`/`{institution}`.
+- **`EngineeringDrawer.tsx`** — new "Email to requester" section: shows the polished template
+  for the request's CURRENT stage in the active language, **editable** subject+body, **Copy**
+  (subject+body → clipboard) and **Open in mail** (`mailto:` prefilled to the requester).
+  Re-syncs on stage/language change; stages with no template show a short note.
+- **i18n:** `engineering.drawer.email*` keys added.
+- **Verified:** `npx tsc --noEmit` clean; a compiled cross-check confirms all 9 templates map
+  to real pipeline stages, FR+EN subject/body non-empty, placeholders fully resolve.
+
+**Deferred (needs client Q6 + Q4 mailbox/n8n):** *auto*-send + timed sweeps (48h AR, 15-day &
+annual satisfaction). Same strings will feed the notification engine; only the trigger is added.
+
+**Not browser-verified** (auth-gated). **Next action:** open a request's drawer at an emailing
+stage (e.g. a test request at `request`, or explant at `reception`) → confirm the FR/EN email
+renders, Copy works, and "Open in mail" launches the client prefilled to the requester.
+
+---
+
+## 2026-07-14 — Session 3 (Engineering section brought to FULL PARITY with Trainee mgmt)
+
+Moved on from Trainee management to the **Engineering section** (`/engineering`). User chose
+**full parity (all 4 phases)**. Plan written to `ENGINEERING_PARITY_PLAN.md`. Starting point:
+the board was functional but thin (3 kind pills + flat rows + inline advance/exit) and **100%
+French-hardcoded**. All 4 phases built, `npx tsc --noEmit` clean after each.
+
+**Phase 1 — i18n parity.** Made the shared pipeline engine bilingual **without disturbing the
+just-finished trainee code**: added `Localized = string | {fr,en}` + a `loc()` resolver to
+`pipeline/core.ts`, and gave the label helpers (`stageLabelOf`/`stageShortOf`/`advanceLabelOf`
++ new `variantLabelOf`) an **optional `lang` param defaulting to "fr"** — so trainee callers
+(which pass no lang) are byte-for-byte unchanged. `StageDef`/`VariantDef`/`PipelineDef.label`
+widened to `Localized`. Converted all `engineering.ts` pipeline defs (explant×2 variants, test,
+equipment) to `{fr,en}`. Wired `useT()`/`useLang()` into `EngineeringBoards.tsx`; moved the
+page header + not-configured banner into the client board so they translate (page.tsx is now a
+thin server wrapper passing `configured`). New `engineering.*` dict block in `i18n.tsx`.
+  - **Note (residual, not touched):** trainee stage *badge* labels still render French even in
+    EN — the trainee i18n pass translated STAGE_HELP/chrome/buttons but not the pipeline-def
+    stage labels themselves. The new lang-aware helpers now make that fixable cheaply for
+    trainees too (pass `lang` at the `stageLabel` call sites) if desired later.
+
+**Phase 2 — detail/action drawer.** New `EngineeringDrawer.tsx` (right-side panel, same
+scrim/aside shell as `TraineeSummaryDrawer`). Rows are now **clickable summaries**; the
+advance / set-case / exit / reopen actions **moved off the row into the drawer footer**. Drawer
+shows: badges, contact (email/institution/org_type/desired_date), notes, `meta` key/values,
+a vertical pipeline **stepper** (done ✓ / current / upcoming), timeline (created/updated/exited
++ reminders state), and the actions.
+
+**Phase 3 — KPIs + search/filters.** New `EngineeringKpiRow.tsx` (Total / Active / Done /
+Exited, reactive to the filtered set) + exported `engStatus(r)` helper (`exited` if exited_at,
+`done` if stage==='done', else `active`). Toolbar in the board: text search (ref/name/email/
+institution), stage filter (current kind's stage ids), status filter, and a pill-style
+created_at date-range (to-date inclusive). Empty state distinguishes no-data vs no-match.
+
+**Phase 4 — stats + comments.**
+  - `EngineeringStatsChart.tsx` — by stage (bars), by status (3-slice donut), requests by month
+    (line). Dependency-free inline SVG (copied the tiny Bar/Donut/LineChart primitives from
+    `TraineeStatsChart` rather than refactoring the trainee file). Reactive to filtered rows.
+  - **Comments** (mirrors `lead_comments`): new migration **`db/engineering_comments.sql`**
+    (`engineering_comments` table, FK→`engineering_requests`, staff-only RLS). Server actions
+    `getEngComments(id)` + `addEngComment(id, body)` in `engineering/actions.ts` (author =
+    logged-in user via `getSessionUser`, same as trainee `addComment`). Drawer has a lazy-loaded
+    comments thread + composer (loads on mount, posting reloads; degrades to empty until the
+    migration is applied).
+
+**Files touched:** `src/lib/pipeline/core.ts`, `src/lib/pipeline/engineering.ts`,
+`src/lib/i18n.tsx`, `src/components/EngineeringBoards.tsx`, `src/app/(app)/engineering/page.tsx`,
+`src/app/(app)/engineering/actions.ts`; **new:** `EngineeringDrawer.tsx`, `EngineeringKpiRow.tsx`,
+`EngineeringStatsChart.tsx`, `db/engineering_comments.sql`, `ENGINEERING_PARITY_PLAN.md`.
+
+**Deploy step this introduces:** run **`db/engineering_comments.sql`** on Supabase (project
+`hdvqiiprylrrzrkydtpa`) for the comments thread to persist. Phases 1–3 are app-only (no DB).
+
+**Not browser-verified** — `/engineering` is auth-gated and I don't have login creds. **Next
+action:** run the migration, then verify live: FR/EN toggle flips every string incl. stage
+labels; row click opens the drawer; advance/case/exit/reopen work from the drawer; KPIs +
+filters + stats react to the filtered set; posting a comment persists.
+
+---
+
 ## 2026-07-14 — Session 2 (CORE staff actions BUILT — closes Trainee management)
 
 Built the CORE of `TRAINEE_ACTIONS_PLAN.md` after reading the Gepromed docs, which confirmed

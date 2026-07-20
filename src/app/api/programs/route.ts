@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import * as XLSX from "xlsx";
+import PDFDocument from "pdfkit";
+import fs from "fs";
+import path from "path";
+import { supabaseServer } from "@/lib/supabase";
+
+// Real Gepromed logo, copied from gepromed-web/public/brand/logo-gepromed-color.png,
+// used as the PDF's letterhead.
+const LOGO_PATH = path.join(process.cwd(), "public", "brand", "logo-gepromed-color.png");
 
 /**
  * Public, auth-free endpoint that renders a branded, print-ready GEPROMED
@@ -54,6 +62,8 @@ const BLOCKS: Array<[keyof Metadata & string, string, boolean]> = [
   ["prerequis", "Prérequis", true],
   ["objectifs", "Objectifs pédagogiques", true],
   ["duree", "Durée", true],
+  ["effectif_max", "Nombre maximum de participants", true],
+  ["formateurs", "Formateur(s)", true],
   ["modalites_pedagogiques", "Modalités pédagogiques", true],
   ["moyens", "Moyens techniques et encadrement", false],
   ["evaluation", "Modalités d'évaluation", true],
@@ -100,6 +110,15 @@ const FICHE_ALIASES: Record<string, string> = {
   "référent pédagogique": "contact",
   indicateurs: "indicateurs",
   "indicateurs de résultats": "indicateurs",
+  effectif: "effectif_max",
+  "effectif maximum": "effectif_max",
+  "nombre maximum de participants": "effectif_max",
+  "nombre de participants": "effectif_max",
+  formateur: "formateurs",
+  formateurs: "formateurs",
+  intervenants: "formateurs",
+  "référent handicap": "referent_handicap",
+  "referent handicap": "referent_handicap",
 };
 
 const DEFAULT_ACCESSIBILITE =
@@ -115,6 +134,26 @@ function esc(s: unknown): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+// The "← Retour" link on the printed program navigates back to wherever the
+// website sent the visitor from (the training's detail page/drawer). Only
+// accept absolute http(s) URLs so this can't become a javascript:/data: XSS
+// vector or an open redirect to a non-web scheme.
+function safeReturnUrl(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function backLinkHtml(returnUrl: string | null): string {
+  if (!returnUrl) return "";
+  return `<a class="backlink" href="${esc(returnUrl)}">&larr; Retour à la formation</a>`;
 }
 
 function normGroup(v: string): string {
@@ -392,25 +431,53 @@ h1.title{color:var(--navy);font-size:20pt;line-height:1.15;margin:14px 0 4px;}
 .ghead{font-size:8.4pt;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;border-bottom:1px dashed var(--hair);padding-bottom:3px;}
 .compliance{margin-top:18px;padding:9px 12px;background:var(--tint);border-radius:4px;font-size:8.4pt;color:var(--muted);font-style:italic;}
 .printbar{position:sticky;top:0;z-index:10;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;font-size:9.5pt;}
-.printbar button{background:var(--orange);color:#fff;border:0;font-weight:700;padding:7px 16px;border-radius:4px;cursor:pointer;font-size:9.5pt;}
+.printbar .left{display:flex;align-items:center;gap:14px;min-width:0;}
+.printbar .backlink{color:#fff;text-decoration:none;font-weight:600;white-space:nowrap;border:1px solid rgba(255,255,255,.35);border-radius:4px;padding:5px 10px;}
+.printbar .backlink:hover{background:rgba(255,255,255,.12);}
+.printbar button{background:var(--orange);color:#fff;border:0;font-weight:700;padding:7px 16px;border-radius:4px;cursor:pointer;font-size:9.5pt;flex-shrink:0;}
+@media print{.printbar .backlink{display:none;}}
 .footer{margin-top:16px;border-top:1px solid var(--hair);padding-top:6px;font-size:7.6pt;color:var(--muted);text-align:center;}
 @page{size:A4;margin:14mm 15mm;}
 @media print{body{background:#fff;}.sheet{box-shadow:none;margin:0;max-width:none;padding:0;}.printbar{display:none!important;}.day,.block,.trow{break-inside:avoid;}}
 `.trim();
 }
 
-function renderProgramHtml(metadataIn: Metadata, slots: Slot[]): string {
+// Shared between the HTML and PDF renderers: applies the same defaults
+// (accessibilité, sanction, named handicap referent) so both outputs stay in
+// sync with each other and with the Qualiopi placeholder convention.
+function prepareMeta(metadataIn: Metadata): { meta: Metadata; rawTitle: string; rawRefBits: string[] } {
   const meta: Metadata = { ...metadataIn };
   if (!meta.accessibilite) meta.accessibilite = DEFAULT_ACCESSIBILITE;
+  if (meta.referent_handicap) {
+    // A NAMED disability-referent contact was supplied (client response
+    // 2026-07-16, points 6/7) — fold it into the accessibilité block instead
+    // of the generic "[email / téléphone à confirmer]" placeholder.
+    const name = Array.isArray(meta.referent_handicap) ? meta.referent_handicap[0] : meta.referent_handicap;
+    const base = Array.isArray(meta.accessibilite) ? meta.accessibilite[0] : meta.accessibilite;
+    meta.accessibilite = String(base).replace(
+      /Contact référent handicap : \[.*?\]\./,
+      `Contact référent handicap : ${name}.`,
+    );
+  }
   if (!meta.sanction) meta.sanction = DEFAULT_SANCTION;
 
-  const timetable = buildTimetable(slots);
-  const title = esc((meta.intitule as string) || "[Intitulé de la formation]");
+  const rawTitle = (meta.intitule as string) || "[Intitulé de la formation]";
+  const rawRefBits: string[] = [];
+  if (meta.reference) rawRefBits.push(`Réf. ${meta.reference}`);
+  rawRefBits.push(`Version ${(meta.version as string) || "[v.]"}`);
+  rawRefBits.push(`Mise à jour : ${(meta.date as string) || "[date]"}`);
 
-  const refBits: string[] = [];
-  if (meta.reference) refBits.push(`Réf. ${esc(meta.reference)}`);
-  refBits.push(`Version ${esc((meta.version as string) || "[v.]")}`);
-  refBits.push(`Mise à jour : ${esc((meta.date as string) || "[date]")}`);
+  return { meta, rawTitle, rawRefBits };
+}
+
+const COMPLIANCE_NOTE =
+  "Note de conformité : ce programme suit les exigences du Référentiel National Qualité (Qualiopi). Vérifier que chaque objectif est évaluable et couvert par les modalités d'évaluation. Toute valeur entre crochets doit être confirmée par le Responsable Qualité avant diffusion publique.";
+
+function renderProgramHtml(metadataIn: Metadata, slots: Slot[], returnUrl: string | null = null): string {
+  const { meta, rawTitle, rawRefBits } = prepareMeta(metadataIn);
+  const timetable = buildTimetable(slots);
+  const title = esc(rawTitle);
+  const refBits = rawRefBits.map(esc);
 
   const blockHtml: string[] = [];
   for (const [key, label, required] of BLOCKS) {
@@ -420,23 +487,161 @@ function renderProgramHtml(metadataIn: Metadata, slots: Slot[]): string {
     blockHtml.push(`<section class="block"><h2>${esc(label)}</h2>${renderBlockValue(value)}</section>`);
   }
 
-  const compliance =
-    "Note de conformité : ce programme suit les exigences du Référentiel National Qualité (Qualiopi). Vérifier que chaque objectif est évaluable et couvert par les modalités d'évaluation. Toute valeur entre crochets doit être confirmée par le Responsable Qualité avant diffusion publique.";
-
   return `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}, Programme de formation GEPROMED</title><style>${css()}</style></head>
 <body>
-<div class="printbar"><span>Programme de formation GEPROMED, document prêt à imprimer</span><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
+<div class="printbar"><div class="left">${backLinkHtml(returnUrl)}<span>Programme de formation GEPROMED, document prêt à imprimer</span></div><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
 <div class="sheet">
 <header class="masthead"><div><div class="wordmark">GEPROMED</div><div class="brandline">The medical device hub for patient safety</div></div><div class="doc-tag">Programme de formation</div></header>
 <h1 class="title">${title}</h1>
 <p class="refline">${refBits.join("  ·  ")}</p>
 ${blockHtml.join("")}
 ${timetableHtml(timetable)}
-<div class="compliance">${esc(compliance)}</div>
+<div class="compliance">${esc(COMPLIANCE_NOTE)}</div>
 <div class="footer">GEPROMED, organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485 &nbsp;|&nbsp; Document de travail, à valider par le Responsable Qualité avant diffusion</div>
 </div></body></html>`;
+}
+
+// --- Real, downloadable PDF (pdfkit) ------------------------------------------
+// Mirrors renderProgramHtml's content (same BLOCKS, same timetable), rendered
+// as an actual binary PDF with the real Gepromed logo as letterhead, so the
+// website's "Télécharger le programme (PDF)" button starts a genuine file
+// download instead of opening a browser-print HTML page.
+function slotPdfLine(doc: PDFKit.PDFDocument, s: Slot, indent: number): void {
+  doc.fontSize(9).fillColor(DARK).font("Helvetica-Bold").text(s.intitule || "–", indent, doc.y, { width: 555 - indent });
+  const metaBits: string[] = [];
+  if (s.salle) metaBits.push(`Salle : ${s.salle}`);
+  if (s.encadrants) metaBits.push(`Encadrant(s) : ${s.encadrants}`);
+  if (s.type) metaBits.push(s.type);
+  if (["oui", "yes", "o", "x", "true", "1"].includes(s.evalue.trim().toLowerCase())) metaBits.push("Évalué");
+  if (metaBits.length) {
+    doc.fontSize(8).fillColor(MUTED).font("Helvetica").text(metaBits.join("   ·   "), indent, doc.y, { width: 555 - indent });
+  }
+  doc.moveDown(0.4);
+}
+
+// Section heading, styled as a soft tinted bar with a solid brand-blue accent
+// tab on the left — reads as "designed", not just a text dump with hairlines.
+function pdfSectionHeading(doc: PDFKit.PDFDocument, label: string): void {
+  if (doc.y > 740) doc.addPage();
+  const barY = doc.y;
+  doc.rect(40, barY, 515, 20).fill(TINT);
+  doc.rect(40, barY, 4, 20).fill(BLUE);
+  doc.fillColor(NAVY).fontSize(10.5).font("Helvetica-Bold").text(label, 52, barY + 5, { width: 495 });
+  doc.y = barY + 28;
+}
+
+function buildProgramPdfBuffer(metadataIn: Metadata, slots: Slot[]): Promise<Buffer> {
+  const { meta, rawTitle, rawRefBits } = prepareMeta(metadataIn);
+  const timetable = buildTimetable(slots);
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+    const chunks: Uint8Array[] = [];
+    doc.on("data", (c: Uint8Array) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    // Letterhead: full-width tinted band with the real Gepromed logo, an
+    // orange document-type tag, and a navy/orange double accent rule —
+    // mirrors the brand gradient hairline used under the website's own header.
+    doc.rect(0, 0, 595, 76).fill(TINT);
+    try {
+      if (fs.existsSync(LOGO_PATH)) doc.image(LOGO_PATH, 40, 22, { height: 32 });
+    } catch {
+      // Missing/unreadable logo asset must never break PDF generation.
+    }
+    const tagW = doc.font("Helvetica-Bold").fontSize(8).widthOfString("PROGRAMME DE FORMATION") + 20;
+    doc.roundedRect(555 - tagW, 30, tagW, 18, 9).fill(ORANGE);
+    doc.fillColor("#ffffff").fontSize(8).font("Helvetica-Bold").text("PROGRAMME DE FORMATION", 555 - tagW, 35, { width: tagW, align: "center" });
+    doc.rect(0, 76, 595, 2.5).fill(BLUE);
+    doc.rect(0, 78.5, 595, 1.5).fill(ORANGE);
+
+    doc.y = 96;
+    doc.fontSize(19).fillColor(NAVY).font("Helvetica-Bold").text(rawTitle, 40, doc.y, { width: 515 });
+    doc.moveDown(0.25);
+    doc.fontSize(8).fillColor(MUTED).font("Helvetica").text(rawRefBits.join("   ·   "), 40, doc.y, { width: 515 });
+    doc.moveDown(0.9);
+
+    for (const [key, label, required] of BLOCKS) {
+      const value = meta[key];
+      const empty = value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
+      if (!required && empty && ["moyens", "sanction", "contact", "indicateurs"].includes(key)) continue;
+
+      pdfSectionHeading(doc, label);
+      if (empty) {
+        doc.fontSize(9.5).fillColor(MUTED).font("Helvetica-Oblique").text(PLACEHOLDER, 40, doc.y, { width: 515 });
+      } else if (Array.isArray(value)) {
+        doc.fontSize(9.5).fillColor(DARK).font("Helvetica");
+        for (const v of value) doc.text(`•  ${v}`, 40, doc.y, { width: 515 });
+      } else {
+        doc.fontSize(9.5).fillColor(DARK).font("Helvetica").text(String(value), 40, doc.y, { width: 515 });
+      }
+      doc.moveDown(0.9);
+    }
+
+    pdfSectionHeading(doc, "Contenu / planning détaillé");
+
+    if (!timetable.length) {
+      doc.fontSize(9.5).fillColor(MUTED).font("Helvetica-Oblique").text("[Planning à compléter, importer un fichier Excel]", 40, doc.y, { width: 515 });
+    } else {
+      for (const day of timetable) {
+        if (doc.y > 720) doc.addPage();
+        const barY = doc.y;
+        doc.rect(40, barY, 515, 18).fill(NAVY);
+        doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text(day.jour, 46, barY + 4, { width: 500 });
+        doc.y = barY + 24;
+
+        for (const b of day.blocks) {
+          const timeLabel = b.fin ? `${b.debut} – ${b.fin}` : b.debut;
+          doc.fontSize(9).fillColor(NAVY).font("Helvetica-Bold").text(timeLabel, 40, doc.y, { width: 515 });
+          doc.moveDown(0.2);
+          for (const s of b.common) slotPdfLine(doc, s, 50);
+          if (b.parallel) {
+            for (const g of b.groupNames) {
+              doc.fontSize(8.5).fillColor(NAVY).font("Helvetica-Bold").text(`Groupe ${g}`, 50, doc.y, { width: 505 });
+              doc.moveDown(0.15);
+              for (const s of b.groups.get(g)!) slotPdfLine(doc, s, 58);
+            }
+          }
+          doc.moveDown(0.3);
+        }
+        doc.moveDown(0.5);
+      }
+    }
+
+    doc.moveDown(0.5);
+    doc.rect(40, doc.y, 515, 0.75).fill(HAIR);
+    doc.moveDown(0.4);
+    doc.fontSize(7.5).fillColor(MUTED).font("Helvetica-Oblique").text(COMPLIANCE_NOTE, 40, doc.y, { width: 515 });
+    doc.moveDown(0.6);
+    doc.fontSize(7).fillColor(MUTED).font("Helvetica").text(
+      "GEPROMED, organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485",
+      40,
+      doc.y,
+      { width: 515, align: "center" },
+    );
+
+    // Page numbers, added last across every buffered page (bufferPages: true
+    // holds all pages open until doc.end() so we can loop back over them).
+    // The y position must stay inside the page's writable area (height minus
+    // bottom margin) — anything past that silently triggers pdfkit's own
+    // overflow pagination and appends a blank extra page per loop iteration.
+    const range = doc.bufferedPageRange();
+    const footerY = doc.page.height - doc.page.margins.bottom - 14;
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(7.5).fillColor(MUTED).font("Helvetica").text(
+        `Page ${i + 1} / ${range.count}`,
+        40,
+        footerY,
+        { width: 515, align: "center", lineBreak: false },
+      );
+    }
+
+    doc.end();
+  });
 }
 
 // --- Seed / demo sessions (public, no DB dependency) -------------------------
@@ -495,12 +700,17 @@ const DEMO_SESSIONS: Record<string, { metadata: Metadata; slots: Slot[] }> = {
   },
 };
 
-function errorHtml(message: string, status: number): NextResponse {
+function errorHtml(message: string, status: number, returnUrl: string | null = null): NextResponse {
+  const back = returnUrl
+    ? `<a class="back" href="${esc(returnUrl)}">&larr; Retour à la formation</a>`
+    : "";
   const body = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Erreur, Programme GEPROMED</title>
 <style>body{font-family:"Segoe UI",Arial,sans-serif;color:${DARK};background:#f4f6f8;padding:40px;}
 .box{max-width:520px;margin:40px auto;background:#fff;border-top:4px solid ${ORANGE};border-radius:6px;padding:28px 32px;box-shadow:0 1px 6px rgba(10,37,64,.12);}
-h1{color:${NAVY};font-size:16pt;margin:0 0 8px;}p{color:${MUTED};}</style></head>
-<body><div class="box"><h1>Programme indisponible</h1><p>${esc(message)}</p></div></body></html>`;
+h1{color:${NAVY};font-size:16pt;margin:0 0 8px;}p{color:${MUTED};}
+.back{display:inline-block;margin-top:14px;color:${BLUE};font-weight:600;text-decoration:none;}
+.back:hover{text-decoration:underline;}</style></head>
+<body><div class="box"><h1>Programme indisponible</h1><p>${esc(message)}</p>${back}</div></body></html>`;
   return new NextResponse(body, {
     status,
     headers: { "content-type": "text/html; charset=utf-8" },
@@ -508,19 +718,89 @@ h1{color:${NAVY};font-size:16pt;margin:0 0 8px;}p{color:${MUTED};}</style></head
 }
 
 // --- Handlers ----------------------------------------------------------------
+// Builds the filename Gepromed sees in their downloads folder, e.g.
+// "programme-bootcamp-vasculaire.pdf" — ASCII-safe, no spaces/accents.
+function pdfFilename(slug: string): string {
+  const safe = slug.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9-]/g, "-");
+  return `programme-${safe}.pdf`;
+}
+
+function pdfResponse(buf: Buffer, slug: string): NextResponse {
+  return new NextResponse(new Uint8Array(buf), {
+    status: 200,
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="${pdfFilename(slug)}"`,
+      "cache-control": "no-store",
+    },
+  });
+}
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const slug = (req.nextUrl.searchParams.get("session") || "").trim();
+  // Optional: the website passes back the URL of the training page/drawer it
+  // was opened from, rendered as a "← Retour" link (see safeReturnUrl above).
+  const returnUrl = safeReturnUrl(req.nextUrl.searchParams.get("return"));
+  // The website's download button requests ?format=pdf for a real binary file
+  // download; without it (e.g. direct browser navigation, the print-friendly
+  // view), the branded HTML page is returned as before.
+  const wantsPdf = req.nextUrl.searchParams.get("format") === "pdf";
   if (!slug) {
     return errorHtml(
       "Précisez une session : /api/programs?session=bootcamp-vasculaire, ou envoyez un fichier .xlsx en POST.",
       400,
+      returnUrl,
     );
   }
-  const session = DEMO_SESSIONS[slug];
-  if (!session) {
-    return errorHtml(`Aucune session « ${slug} » trouvée dans les données de démonstration.`, 404);
+
+  const demo = DEMO_SESSIONS[slug];
+  if (demo) {
+    if (wantsPdf) {
+      const buf = await buildProgramPdfBuffer(demo.metadata, demo.slots);
+      return pdfResponse(buf, slug);
+    }
+    const html = renderProgramHtml(demo.metadata, demo.slots, returnUrl);
+    return new NextResponse(html, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
   }
-  const html = renderProgramHtml(session.metadata, session.slots);
+
+  // Not a demo slug: look up the training's uploaded workbook
+  // (db/program_workbooks.sql — GEPROMED_CLIENT_FIXES_PLAN.md Point 2).
+  const sb = supabaseServer();
+  if (!sb) {
+    return errorHtml(`Aucune session « ${slug} » trouvée dans les données de démonstration.`, 404, returnUrl);
+  }
+  const { data: training } = await sb
+    .from("trainings")
+    .select("program_workbook_path")
+    .eq("slug", slug)
+    .maybeSingle();
+  const path = training?.program_workbook_path as string | null | undefined;
+  if (!path) {
+    return errorHtml(
+      `Aucun programme disponible pour « ${slug} » — le classeur .xlsx n'a pas encore été téléversé par Gepromed.`,
+      404,
+      returnUrl,
+    );
+  }
+  const { data: file, error: dlError } = await sb.storage.from("program-workbooks").download(path);
+  if (dlError || !file) {
+    return errorHtml(`Le classeur du programme est introuvable pour « ${slug} ».`, 404, returnUrl);
+  }
+  const buf = Buffer.from(await file.arrayBuffer());
+  let parsed: { metadata: Metadata; slots: Slot[] };
+  try {
+    parsed = parseWorkbook(buf);
+  } catch (e) {
+    return errorHtml(`Impossible de lire le classeur du programme : ${(e as Error).message}`, 422, returnUrl);
+  }
+  if (wantsPdf) {
+    const pdfBuf = await buildProgramPdfBuffer(parsed.metadata, parsed.slots);
+    return pdfResponse(pdfBuf, slug);
+  }
+  const html = renderProgramHtml(parsed.metadata, parsed.slots, returnUrl);
   return new NextResponse(html, {
     status: 200,
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },

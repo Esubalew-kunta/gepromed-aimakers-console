@@ -5,6 +5,11 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: false },
   reactStrictMode: true,
   poweredByHeader: false,
+  // pdfkit (used by /api/programs for the real PDF download) loads its
+  // built-in font metrics (.afm) files via relative paths at runtime.
+  // Webpack-bundling it breaks that lookup ("Helvetica.afm ENOENT"), so it
+  // must stay a native require, resolved from node_modules as usual.
+  serverExternalPackages: ["pdfkit"],
 };
 
 export default nextConfig;

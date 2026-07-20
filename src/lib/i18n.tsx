@@ -142,6 +142,7 @@ const DICT = {
   "traineeSummary.registeredTo": { fr: "Inscrit jusqu'au", en: "Registered until" },
   "traineeSummary.fundingSelf": { fr: "Autofinancé", en: "Self-funded" },
   "traineeSummary.fundingSponsored": { fr: "Sponsorisé", en: "Sponsored" },
+  "traineeSummary.fundingHelpMeSee": { fr: "HelpMeSee (fondation)", en: "HelpMeSee (foundation)" },
 
   // Trainee summary — table
   "traineeSummary.colTrainee": { fr: "Trainee", en: "Trainee" },

@@ -147,12 +147,23 @@ export function TraineeStatsChart({ leads }: { leads: Lead[] }) {
     );
   }, [leads]);
 
+  // Three real funding states, not two: HelpMeSee trainees are foundation-
+  // referred (their own "From €X" pricing rule, never plain self-funded),
+  // so they get their own slice instead of silently falling into
+  // "self-funded" just because their `funding` column isn't "sponsored".
   const byFunding = useMemo(() => {
-    const self = leads.filter((l) => l.funding !== "sponsored").length;
-    const sponsored = leads.filter((l) => l.funding === "sponsored").length;
+    let helpmesee = 0;
+    let self = 0;
+    let sponsored = 0;
+    for (const l of leads) {
+      if (normalizeParcours(l) === "helpmesee") helpmesee++;
+      else if (l.funding === "sponsored") sponsored++;
+      else self++;
+    }
     return [
       { label: t("traineeSummary.fundingSelf"), value: self, color: HEX_COLORS[0] },
       { label: t("traineeSummary.fundingSponsored"), value: sponsored, color: HEX_COLORS[2] },
+      { label: t("traineeSummary.fundingHelpMeSee"), value: helpmesee, color: HEX_COLORS[1] },
     ];
   }, [leads, t]);
 

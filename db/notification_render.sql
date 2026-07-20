@@ -3,12 +3,9 @@
 -- (server-side merge-field rendering, so the n8n workflows stay simple and the
 -- rendering is testable in SQL). Project: hdvqiiprylrrzrkydtpa.
 --
--- Kept in sync with what's actually deployed (this file previously drifted
--- from prod — the sponsor-conditional {{registration_steps}}/
--- {{confirmation_ack}} wording and the sponsor logo/name badge below were
--- applied directly against Supabase and only backfilled into this file
--- afterward). If you change these functions, apply them live AND update this
--- file in the same change so it doesn't drift again.
+-- Kept in sync with what's actually deployed (this file has drifted from
+-- prod more than once already — apply changes live AND update this file in
+-- the same change, or it drifts again).
 -- ============================================================================
 
 -- 1. Idempotent email logging (returns {"send": bool}). p_daily=true => once/day.
@@ -74,26 +71,35 @@ returns text language sql immutable as $$
 $$;
 
 -- 2. Render a template for a lead: fills the DB-derivable merge fields and
--- returns {send, to, subject, body, body_html, sender}. body stays plain text
--- (what staff edited); body_html is the branded version n8n actually sends.
--- Client-provided links (deposit, survey, instructor...) are left as literal
--- {{...}} until supplied.
+-- returns {send, to, subject, body, body_html, sender, attachment_url,
+-- attachment_name}. body stays plain text (what staff edited); body_html is
+-- the branded version n8n actually sends.
 --
 -- Sponsored vs self-funded trainings get genuinely different content, not
 -- just a cosmetic label swap:
 --   - {{registration_steps}} / {{confirmation_ack}}: sponsored trainees are
 --     told their seat is fully funded, no deposit/contract required, seat
---     confirmed directly. Self-funded trainees get the original deposit +
---     contract ask. (Previously the DB trigger + email both asked every
---     trainee for the €200 deposit and signed contract regardless of
---     sponsorship — this is the fix for that.)
+--     confirmed directly. Self-funded trainees get the deposit + contract
+--     ask, with the deposit paid by bank transfer (verified manually — the
+--     trainee replies with a screenshot/receipt) since there's no online
+--     payment link/provider wired up yet. v_bank_details is a literal
+--     placeholder until the real account details are supplied.
 --   - v_sponsor_html: a visual logo+name badge (or an initials chip when no
 --     logo is set) shown under the email header for sponsored trainings,
 --     instead of only a plain-text sponsor mention.
+--   - attachment_url/attachment_name: resolved from the lead's matched
+--     contract_template_id (contract_templates.file_url in the public
+--     'contracts' storage bucket) ONLY when the template calls for the
+--     engagement_contract attachment AND the training isn't sponsored (a
+--     sponsored lead can still carry a stale contract_template_id from
+--     before the auto_attach_contract sponsor fix, so this is gated
+--     explicitly rather than relying on that column alone).
 create or replace function render_notification(p_lead uuid, p_template_key text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare tpl record; l record; t record; subj text; bod text; block text; dates text;
   v_sponsor_name text; v_registration_steps text; v_confirmation_ack text; v_sponsor_html text;
+  v_attachment_url text; v_attachment_name text; ct record;
+  v_bank_details text := '[BANK DETAILS TO BE CONFIRMED — account holder, IBAN, BIC/SWIFT, bank name]';
 begin
   select * into tpl from notification_templates where key = p_template_key and active limit 1;
   if not found then return jsonb_build_object('send', false, 'reason', 'template inactive/missing'); end if;
@@ -141,15 +147,29 @@ begin
     ) into v_sponsor_html
     from jsonb_array_elements(coalesce(t.sponsors,'[]'::jsonb)) s;
   else
-    block := 'Tarif participant : ' || coalesce(t.price_eur::text, '') || ' €';
+    block := 'Tarif participant : ' || coalesce(t.price_eur::text, '') || ' EUR';
     v_registration_steps :=
       '- Signing the training commitment agreement (attached).' || E'\n' ||
-      '- Paying a €200 deposit via the online link below: {{deposit_link}}' || E'\n\n' ||
+      '- Paying a EUR200 deposit by bank transfer to the account below, then replying to this email with a screenshot or receipt of the transfer as proof of payment (deposits are verified manually):' || E'\n\n' ||
+      v_bank_details || E'\n\n' ||
       'This deposit is fully refundable at the end of the training. It was introduced to help minimize last-minute cancellations and ensure smooth logistics for all participants.';
     v_confirmation_ack :=
       'I acknowledge receipt of your signed contract as well as the deposit payment for the ' ||
       coalesce(t.title->>'en', t.title->>'fr', '') || ', which will take place at Gepromed on ' || dates || '.';
     v_sponsor_html := null;
+  end if;
+
+  v_attachment_url := null;
+  v_attachment_name := null;
+  if 'engagement_contract' = any(coalesce(tpl.attachments, '{}'))
+     and not coalesce(t.is_sponsored, false)
+     and l.contract_template_id is not null then
+    select * into ct from contract_templates where id = l.contract_template_id;
+    if found and ct.file_url is not null then
+      v_attachment_url := 'https://hdvqiiprylrrzrkydtpa.supabase.co/storage/v1/object/public/contracts/' || ct.file_url;
+      v_attachment_name := 'Contrat_engagement_' || regexp_replace(coalesce(t.title->>'fr','Gepromed'), '[^a-zA-Z0-9]+', '_', 'g') ||
+        '.' || coalesce(substring(ct.file_url from '\.([a-zA-Z0-9]+)$'), 'pdf');
+    end if;
   end if;
 
   subj := tpl.subject; bod := tpl.body;
@@ -169,7 +189,11 @@ begin
   bod := replace(bod, '{{confirmation_ack}}', v_confirmation_ack);
   bod := replace(bod, '{{elearning_link}}', 'https://gepromed.sinfony.eu/');
 
-  return jsonb_build_object('send', true, 'to', l.email, 'subject', subj, 'body', bod, 'body_html', wrap_email_html(bod, v_sponsor_html), 'sender', tpl.sender);
+  return jsonb_build_object(
+    'send', true, 'to', l.email, 'subject', subj, 'body', bod,
+    'body_html', wrap_email_html(bod, v_sponsor_html), 'sender', tpl.sender,
+    'attachment_url', v_attachment_url, 'attachment_name', v_attachment_name
+  );
 end; $$;
 grant execute on function render_notification(uuid, text) to service_role;
 grant execute on function wrap_email_html(text, text) to service_role;

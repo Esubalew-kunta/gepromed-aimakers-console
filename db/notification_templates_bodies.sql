@@ -3,8 +3,7 @@
 -- Notion page), with {{merge_fields}} for the XX / DD MM / *Training Name*
 -- placeholders. Copy lives here so staff edit wording without touching n8n
 -- (Master Plan Decision 2). Dollar-quoted ($body$) so apostrophes need no escaping.
--- The 2 gaps (trainee.bootcamp.relance, trainee.hms.credentials) stay inactive
--- until the client provides copy.
+-- trainee.hms.credentials stays inactive until the client provides copy.
 -- Merge fields: {{first_name}} {{last_name}} {{title}} {{dates}} {{duration_days}}
 --   {{tarif}} {{deposit_link}} {{elearning_link}} {{survey_link}} {{instructor_name}}
 --   {{instructor_phone}} {{sponsor_or_tariff}} {{date_options}}
@@ -88,6 +87,44 @@ Should you experience any issues, don't hesitate to reach out — we're happy to
 Best regards,$body$ where key='trainee.hms.satisfaction';
 
 -- ---------- Bootcamps & Workshops (education@gepromed.com) ----------
+-- Fires immediately on form submit (stage='lead'), before staff touch the
+-- lead — acknowledges receipt so the trainee isn't left wondering.
+update notification_templates set body = $body$Dear {{first_name}},
+
+Thank you for submitting your registration request for the {{title}}, which will take place at Gepromed on {{dates}}.
+
+We successfully received your request and our team will now begin reviewing your profile against the training prerequisites. We will come back to you shortly with an update.
+
+If you have any questions in the meantime, please do not hesitate to contact us.
+
+Best regards,$body$ where key='trainee.bootcamp.request_received';
+
+-- Inactive: kept only so the 'prerequisites' stage_enter slot is documented;
+-- would duplicate request_received's message if both were active.
+update notification_templates set body = $body$Dear {{first_name}},
+
+Thank you for submitting your registration request for the {{title}}, which will take place at Gepromed on {{dates}}.
+
+We are currently reviewing the prerequisites for this training against your profile. We will come back to you shortly to confirm your eligibility and share the next steps to finalize your registration.
+
+If you have any questions in the meantime, please do not hesitate to contact us.
+
+Best regards,$body$ where key='trainee.bootcamp.prerequisites';
+
+update notification_templates set body = $body$Dear {{first_name}},
+
+This is a friendly reminder regarding your registration for {{title}} ({{dates}}).
+
+To finalize your spot, please complete the following:
+- Sign the training commitment agreement.
+- Pay the €200 deposit: {{deposit_link}}
+
+{{sponsor_or_tariff}}
+
+If you have already completed these steps, please disregard this message.
+
+Best regards,$body$ where key='trainee.bootcamp.relance';
+
 update notification_templates set body = $body$Dear {{first_name}},
 
 Thank you very much for your interest in the {{title}}, which will be held at Gepromed on {{dates}}.

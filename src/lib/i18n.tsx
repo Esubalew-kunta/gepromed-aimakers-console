@@ -316,6 +316,19 @@ const DICT = {
     en: "Cancel this trainee's registration? Optionally enter a reason (leave blank to confirm with no reason, Cancel to abort).",
   },
   "pipeline.drawer.cancelledBadge": { fr: "Annulé", en: "Cancelled" },
+  "pipeline.drawer.sponsoredBadge": { fr: "Sponsorisé", en: "Sponsored" },
+  "pipeline.drawer.sponsoredNoDeposit": {
+    fr: "Sponsorisé — aucune caution ni contrat requis (financement pris en charge).",
+    en: "Sponsored — no deposit or contract required (funding covered).",
+  },
+  "pipeline.drawer.sponsoredWhat": {
+    fr: "Place financée par le sponsor. Aucune caution ni contrat d'engagement à demander.",
+    en: "Seat funded by the sponsor. No deposit or commitment contract to request.",
+  },
+  "pipeline.drawer.sponsoredWaitingFor": {
+    fr: "Rien — la place est confirmée directement.",
+    en: "Nothing — the seat is confirmed directly.",
+  },
   "pipeline.drawer.reinstate": { fr: "Réintégrer", en: "Reinstate" },
   "pipeline.drawer.reinstateConfirm": {
     fr: "Réintégrer ce trainee dans le parcours ?",
@@ -420,6 +433,12 @@ const DICT = {
   "engineering.exit": { fr: "Sortie", en: "Exit" },
   "engineering.exitTitle": { fr: "Sortie du parcours", en: "Exit the pipeline" },
   "engineering.finished": { fr: "Terminé", en: "Done" },
+  "engineering.optional": { fr: "optionnel", en: "optional" },
+  "engineering.skipTo": { fr: "Passer à", en: "Skip to" },
+  "engineering.skipHint": {
+    fr: "Étape optionnelle : passer directement à l'étape suivante sans réaliser le complément.",
+    en: "Optional step: jump straight to the next stage without doing the complement.",
+  },
   "engineering.slotWanted": { fr: "créneau souhaité", en: "desired slot" },
   "engineering.viewDetail": { fr: "Voir le détail", en: "View details" },
 

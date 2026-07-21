@@ -39,18 +39,30 @@ separated by a newline or ` | `.
 | Objectifs | Réaliser une anastomose termino-latérale sur simulateur dans le temps imparti. |
 | Objectifs | Identifier et corriger les défauts de suture vasculaire les plus fréquents. |
 | Durée | 2 jours — 14 heures (4 demi-journées). |
+| Effectif maximum | 12 participants. |
+| Formateurs | Dr. X, chirurgien vasculaire — responsable pédagogique. |
 | Modalités pédagogiques | Présentiel au René Kieny Education Center (Strasbourg). |
 | Moyens | Simulateurs vasculaires et consommables d'entraînement fournis. |
 | Évaluation | Pré-test et post-test ; évaluation pratique sur grille standardisée. |
 | Délais d'accès | Inscription jusqu'à [N] jours avant la session. |
-| Tarifs | [montant] € net de taxe par participant. |
+| Tarifs | [montant] € net de taxe par participant, ou nom du financeur si prise en charge tierce. |
 | Inscription | Formulaire en ligne ou email au référent pédagogique, jusqu'au [date limite]. |
+| Référent handicap | [nom du référent handicap] |
 | Contact | Référent pédagogique GEPROMED : [email / téléphone à confirmer]. |
 
 **Recognised `Champ` labels** (accents/case tolerant): Intitulé, Référence,
-Version, Date, Public visé, Prérequis, Objectifs, Durée, Modalités pédagogiques,
-Moyens, Évaluation, Sanction, Accessibilité, Délais d'accès, Tarifs, Inscription,
-Contact, Indicateurs.
+Version, Date, Public visé, Prérequis, Objectifs, Durée, Effectif maximum,
+Formateurs, Modalités pédagogiques, Moyens, Évaluation, Sanction, Accessibilité,
+Référent handicap, Délais d'accès, Tarifs, Inscription, Contact, Indicateurs.
+
+**Effectif maximum** and **Formateurs** are now required blocks (client
+response 2026-07-16: max participants, and trainer(s) name + title, must
+appear on both the PDF and the public detail page). **Référent handicap** is
+optional but recommended — when supplied, its value replaces the generic
+"[email / téléphone à confirmer]" placeholder inside the auto-filled
+Accessibilité block with the named contact. **Tarifs** should read as free
+text: the amount plus any extra costs (accommodation/transport, discounts),
+or the funder's name when the training is third-party funded.
 
 **Auto-filled if omitted:** `Accessibilité handicap` (standard GEPROMED référent
 process paragraph) and `Sanction` (attestation + certificat de réalisation).

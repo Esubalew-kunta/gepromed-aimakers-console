@@ -30,6 +30,7 @@ const STAGE_TS: Record<Stage, string | null> = {
   confirmed: "confirmed_at",
   done: "done_at",
   // HelpMeSee
+  enrollment_form: "enrollment_form_at",
   dates_validation: "dates_validated_at",
   invoice: "invoice_paid_at",
   elearning_check: "elearning_checked_at",

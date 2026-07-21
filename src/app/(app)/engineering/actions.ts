@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { ENGINEERING_PIPELINES } from "@/lib/pipeline/engineering";
-import { nextStageId } from "@/lib/pipeline/core";
+import { nextStageId, skipStageId } from "@/lib/pipeline/core";
 
 export interface EngComment {
   id: string;
@@ -27,6 +27,28 @@ export async function advanceEngStage(
   const next = nextStageId(def, variant ?? def.defaultVariantKey, current);
   if (!next) return;
   await sb.from("engineering_requests").update({ stage: next }).eq("id", id);
+  revalidatePath("/engineering");
+}
+
+/**
+ * Skip the immediately-following OPTIONAL stage(s) and jump to the next required
+ * stage (e.g. explant: 1st report → Fidélisation, bypassing the optional
+ * Complément). No-op unless the current stage is actually followed by an
+ * optional stage, so it can never skip a required step.
+ */
+export async function skipEngStage(
+  id: string,
+  kind: string,
+  variant: string | null,
+  current: string,
+) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  const def = ENGINEERING_PIPELINES[kind];
+  if (!def) return;
+  const target = skipStageId(def, variant ?? def.defaultVariantKey, current);
+  if (!target) return;
+  await sb.from("engineering_requests").update({ stage: target }).eq("id", id);
   revalidatePath("/engineering");
 }
 

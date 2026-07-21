@@ -47,6 +47,7 @@ export const DEFAULT_PARCOURS: Parcours = "bootcamp";
 
 export type HelpMeSeeStage =
   | "lead"
+  | "enrollment_form"
   | "dates_validation"
   | "invoice"
   | "elearning_check"
@@ -74,6 +75,7 @@ export type ExitStatus = typeof NOT_INTERESTED;
 
 export const HELPMESEE_STAGES: readonly HelpMeSeeStage[] = [
   "lead",
+  "enrollment_form",
   "dates_validation",
   "invoice",
   "elearning_check",
@@ -100,6 +102,7 @@ export const BOOTCAMP_STAGES: readonly BootcampStage[] = [
 
 const HELPMESEE_STAGE_LABEL: Record<HelpMeSeeStage, string> = {
   lead: "Trainee à suivre",
+  enrollment_form: "Formulaire d'inscription HelpMeSee",
   dates_validation: "Dates à valider",
   invoice: "Facture à payer",
   elearning_check: "E-learning à vérifier",
@@ -123,6 +126,7 @@ const BOOTCAMP_STAGE_LABEL: Record<BootcampStage, string> = {
 /** Short caps used under the workflow stepper nodes. */
 const HELPMESEE_STAGE_SHORT: Record<HelpMeSeeStage, string> = {
   lead: "À suivre",
+  enrollment_form: "Formulaire",
   dates_validation: "Dates",
   invoice: "Facture",
   elearning_check: "E-learning",
@@ -145,6 +149,7 @@ const BOOTCAMP_STAGE_SHORT: Record<BootcampStage, string> = {
 
 const HELPMESEE_STAGE_TONE: Record<HelpMeSeeStage, string> = {
   lead: "bg-amber-50 text-amber-700",
+  enrollment_form: "bg-rose-50 text-rose-700",
   dates_validation: "bg-indigo-50 text-indigo-700",
   invoice: "bg-orange-50 text-orange-700",
   elearning_check: "bg-violet-50 text-violet-700",
@@ -172,6 +177,7 @@ const BOOTCAMP_STAGE_TONE: Record<BootcampStage, string> = {
  */
 const HELPMESEE_ADVANCE_LABEL: Record<HelpMeSeeStage, string | null> = {
   lead: "Démarrer le suivi",
+  enrollment_form: "Formulaire transmis à HelpMeSee",
   dates_validation: "Dates validées",
   invoice: "Facture payée",
   elearning_check: "E-learning vérifié",

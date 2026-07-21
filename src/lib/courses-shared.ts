@@ -25,6 +25,19 @@ export interface ProgramDay {
   day: Bi;
   items: Bi[];
 }
+export interface Sponsor {
+  name: string;
+  logoUrl?: string;
+  website?: string;
+  referentName?: string;
+}
+
+export const PROGRAM_TYPES = ["bootcamp", "workshop", "helpmesee"] as const;
+export const PROGRAM_TYPE_LABEL: Record<string, string> = {
+  bootcamp: "Bootcamp",
+  workshop: "Workshop",
+  helpmesee: "HelpMeSee (foundation)",
+};
 
 export interface Course {
   id: string;
@@ -60,6 +73,21 @@ export interface Course {
   teaching_methods?: Bi; // Méthodes d'enseignement (présentiel, simulateur, atelier…)
   evaluation_methods?: Bi; // Méthodes d'évaluation
   supervision_organization?: Bi; // Organisation / encadrement
+  accessibility_info?: Bi; // Accessibilité handicap (free text)
+  accessibility_referent?: string; // named disability-referent contact
+  certificate_delivered?: Bi; // Certificat / attestation délivrée
+  registration_info?: Bi; // Modalités et délais d'inscription
+  price_note?: Bi; // Tarif en texte libre (montant, frais annexes, remise) ou nom du financeur
+  // Funding + sponsorship — training-level, never per-registrant (client
+  // response 2026-07-16). program_type drives which Trainee pipeline a
+  // registrant lands in (helpmesee vs bootcamp/workshop).
+  program_type?: string;
+  is_sponsored?: boolean;
+  sponsors?: Sponsor[];
+  // Uploaded program-PDF workbook (db/program_workbooks.sql), read back by
+  // GET /api/programs?session=<slug>. Storage path, not a public URL — the
+  // bucket is private, only the server (service-role client) reads it.
+  program_workbook_path?: string | null;
 }
 
 export function isUpcoming(c: Course, now = new Date()): boolean {

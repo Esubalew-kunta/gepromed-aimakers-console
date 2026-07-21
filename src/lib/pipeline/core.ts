@@ -39,6 +39,12 @@ export interface StageDef {
   tone: string;
   /** Button label that advances to the NEXT stage (null = terminal stage). */
   advanceLabel: Localized | null;
+  /**
+   * Optional stage: it exists in the ordered flow (and is still enterable +
+   * recorded when used) but is NOT a prerequisite for the stages after it.
+   * A case may skip past a run of optional stages via `skipStageId`.
+   */
+  optional?: boolean;
 }
 
 export interface VariantDef {
@@ -141,4 +147,26 @@ export function nextStageId(
   const ids = stageIdsFor(def, variantKey);
   const i = ids.indexOf(stageId);
   return i >= 0 && i < ids.length - 1 ? ids[i + 1] : null;
+}
+
+/**
+ * The stage id reached by skipping the immediately-following OPTIONAL stage(s).
+ * Returns null when the next stage is NOT optional (nothing to skip) or there is
+ * no required stage beyond the optional run. Used to let a case bypass optional
+ * stages (e.g. the explant "Complément") without completing them, while
+ * `nextStageId` still lets staff step into the optional stage normally.
+ */
+export function skipStageId(
+  def: PipelineDef,
+  variantKey: string,
+  stageId: string,
+): string | null {
+  const stages = getVariant(def, variantKey).stages;
+  const i = stages.findIndex((s) => s.id === stageId);
+  // Only offer a skip when the very next stage is optional.
+  if (i < 0 || i + 1 >= stages.length || !stages[i + 1].optional) return null;
+  // Walk past every consecutive optional stage to the first required one.
+  let j = i + 1;
+  while (j < stages.length && stages[j].optional) j++;
+  return j < stages.length ? stages[j].id : null;
 }

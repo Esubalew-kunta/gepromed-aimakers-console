@@ -12,11 +12,14 @@ import {
   type Bi,
   type Supervisor,
   type ProgramDay,
+  type Sponsor,
   SPECIALTIES,
   SPECIALTY_LABEL,
   LEVELS,
   AUDIENCES,
   COURSE_STATUS,
+  PROGRAM_TYPES,
+  PROGRAM_TYPE_LABEL,
 } from "@/lib/courses-shared";
 
 export function CourseForm({ course }: { course?: Course }) {
@@ -35,6 +38,8 @@ export function CourseForm({ course }: { course?: Course }) {
   const [audienceTags, setAudienceTags] = useState<string[]>(
     course?.target_audience ?? [],
   );
+  const [isSponsored, setIsSponsored] = useState(course?.is_sponsored ?? false);
+  const [sponsors, setSponsors] = useState<Sponsor[]>(course?.sponsors ?? []);
 
   return (
     <form action={action} className="space-y-5">
@@ -44,6 +49,7 @@ export function CourseForm({ course }: { course?: Course }) {
       <input type="hidden" name="program" value={JSON.stringify(program)} />
       <input type="hidden" name="target_audience" value={JSON.stringify(audienceTags)} />
       <input type="hidden" name="image_url_existing" value={course?.image_url ?? ""} />
+      <input type="hidden" name="sponsors" value={JSON.stringify(isSponsored ? sponsors : [])} />
 
       {/* Basics */}
       <section className="card space-y-4 p-6">
@@ -163,6 +169,124 @@ export function CourseForm({ course }: { course?: Course }) {
         ) : null}
       </section>
 
+      {/* Program PDF workbook */}
+      <section className="card space-y-3 p-6">
+        <div>
+          <h2 className="text-sm font-semibold text-ink-900">Program PDF (.xlsx)</h2>
+          <p className="text-xs text-ink-400">
+            One workbook per training (Fiche + Planning sheets). Once uploaded, the
+            public site&apos;s &quot;Download program&quot; button goes live for this
+            training — see{" "}
+            <code className="text-ink-500">skills/gepromed-qualiopi-program-generator</code>{" "}
+            for the expected format.
+          </p>
+        </div>
+        {course?.program_workbook_path ? (
+          <p className="text-xs text-emerald-700">
+            ✓ Workbook uploaded ({course.program_workbook_path}). Upload a new file to replace it.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-700">
+            No workbook yet — the public PDF button shows &quot;coming soon&quot; until one is uploaded.
+          </p>
+        )}
+        <input type="file" name="program_workbook" accept=".xlsx" className="input" />
+      </section>
+
+      {/* Funding & sponsorship — training-level, never per-registrant */}
+      <section className="card space-y-4 p-6">
+        <div>
+          <h2 className="text-sm font-semibold text-ink-900">Funding &amp; sponsorship</h2>
+          <p className="text-xs text-ink-400">
+            Set once here, for the whole training — never asked of the registrant.
+            Self-funded shows the price on the public catalog card; sponsored hides
+            the price and shows the sponsor logo instead. HelpMeSee trainings always
+            show a price worded &quot;From €X&quot;, regardless of this setting.
+          </p>
+        </div>
+        <Field label="Programme type">
+          <select name="program_type" defaultValue={course?.program_type ?? "bootcamp"} className="input">
+            {PROGRAM_TYPES.map((p) => (
+              <option key={p} value={p}>
+                {PROGRAM_TYPE_LABEL[p]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-ink-600">
+          <input
+            type="checkbox"
+            name="is_sponsored"
+            checked={isSponsored}
+            onChange={(e) => setIsSponsored(e.target.checked)}
+            className="h-4 w-4"
+          />
+          Sponsored by a third party (lab/company) — hides the price publicly
+        </label>
+        {isSponsored ? (
+          <div className="space-y-3 rounded-xl border border-ink-100 p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-ink-700">Sponsor(s)</h3>
+              <button
+                type="button"
+                onClick={() =>
+                  setSponsors((s) => [...s, { name: "", logoUrl: "", website: "", referentName: "" }])
+                }
+                className="btn-ghost !py-1 !text-xs"
+              >
+                + Add sponsor
+              </button>
+            </div>
+            {sponsors.length === 0 ? (
+              <p className="text-xs text-ink-400">No sponsor yet — add at least one.</p>
+            ) : null}
+            {sponsors.map((s, i) => (
+              <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+                <input
+                  value={s.name}
+                  onChange={(e) =>
+                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))
+                  }
+                  placeholder="Sponsor name"
+                  className="input"
+                />
+                <input
+                  value={s.logoUrl ?? ""}
+                  onChange={(e) =>
+                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, logoUrl: e.target.value } : x)))
+                  }
+                  placeholder="Logo URL"
+                  className="input"
+                />
+                <input
+                  value={s.website ?? ""}
+                  onChange={(e) =>
+                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, website: e.target.value } : x)))
+                  }
+                  placeholder="Website"
+                  className="input"
+                />
+                <input
+                  value={s.referentName ?? ""}
+                  onChange={(e) =>
+                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, referentName: e.target.value } : x)))
+                  }
+                  placeholder="Referent contact (optional)"
+                  className="input"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSponsors((arr) => arr.filter((_, j) => j !== i))}
+                  className="rounded-lg px-2 text-sm text-red-500 hover:bg-red-50"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
       {/* Qualiopi, public training detail fields */}
       <section className="card space-y-4 p-6">
         <div>
@@ -223,6 +347,44 @@ export function CourseForm({ course }: { course?: Course }) {
           name="supervision_organization"
           fr={course?.supervision_organization?.fr}
           en={course?.supervision_organization?.en}
+          textarea
+        />
+        <BiField
+          label="Accessibilité handicap"
+          name="accessibility_info"
+          fr={course?.accessibility_info?.fr}
+          en={course?.accessibility_info?.en}
+          textarea
+        />
+        <Field
+          label="Référent handicap (nom)"
+          hint="Named disability-referent contact, shown on the PDF and detail page."
+        >
+          <input
+            name="accessibility_referent"
+            defaultValue={course?.accessibility_referent}
+            className="input"
+          />
+        </Field>
+        <BiField
+          label="Certificat / attestation délivrée"
+          name="certificate_delivered"
+          fr={course?.certificate_delivered?.fr}
+          en={course?.certificate_delivered?.en}
+          textarea
+        />
+        <BiField
+          label="Modalités et délais d'inscription"
+          name="registration_info"
+          fr={course?.registration_info?.fr}
+          en={course?.registration_info?.en}
+          textarea
+        />
+        <BiField
+          label="Tarif (texte libre)"
+          name="price_note"
+          fr={course?.price_note?.fr}
+          en={course?.price_note?.en}
           textarea
         />
       </section>

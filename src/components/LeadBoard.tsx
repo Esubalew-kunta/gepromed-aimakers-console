@@ -46,6 +46,7 @@ const STAGE_TS_FIELD: Record<Stage, keyof Lead | null> = {
   lead: null,
   confirmed: "confirmed_at",
   done: "done_at",
+  enrollment_form: "enrollment_form_at",
   dates_validation: "dates_validated_at",
   invoice: "invoice_paid_at",
   elearning_check: "elearning_checked_at",
@@ -106,12 +107,24 @@ const STAGE_HELP: Record<Parcours, Partial<Record<Stage, Record<Lang, StepHelp>>
       fr: {
         what: "Trainee référencé par la fondation HelpMeSee.",
         waitingFor: "Prise en charge du dossier par l'équipe.",
-        onAdvance: "Démarre le suivi → email « validation des dates ».",
+        onAdvance: "Démarre le suivi → envoi du formulaire d'inscription HelpMeSee.",
       },
       en: {
         what: "Trainee referred by the HelpMeSee foundation.",
         waitingFor: "The team taking ownership of the case.",
-        onAdvance: "Starts the follow-up → \"dates validation\" email.",
+        onAdvance: "Starts the follow-up → sends the HelpMeSee enrollment form.",
+      },
+    },
+    enrollment_form: {
+      fr: {
+        what: "Le formulaire d'inscription HelpMeSee (propre à la fondation) est envoyé au trainee, complété, puis retourné par Gepromed à HelpMeSee. Gepromed est l'intermédiaire à chaque étape — aucun formulaire public ni portail.",
+        waitingFor: "Retour du formulaire complété par le trainee, puis confirmation de sa transmission à HelpMeSee.",
+        onAdvance: "Confirme que le formulaire a été transmis à HelpMeSee → email « validation des dates ».",
+      },
+      en: {
+        what: "HelpMeSee's own enrollment form (external to Gepromed) is sent to the trainee, filled in, and returned by Gepromed to HelpMeSee. Gepromed relays it by hand at every step — no public form or portal.",
+        waitingFor: "The trainee returning the completed form, then confirming it's been forwarded to HelpMeSee.",
+        onAdvance: "Confirms the form was forwarded to HelpMeSee → \"dates validation\" email.",
       },
     },
     dates_validation: {
@@ -633,6 +646,11 @@ export function LeadBoard({
                   <span className={`badge ${stageTone(normalizeParcours(l), l.stage)}`}>
                     {stageLabel(normalizeParcours(l), l.stage)}
                   </span>
+                  {l.funding === "sponsored" ? (
+                    <span className="badge bg-violet-50 text-violet-700">
+                      {t("pipeline.drawer.sponsoredBadge")}
+                    </span>
+                  ) : null}
                   {l.cancelled_at ? (
                     <span className="badge bg-red-50 text-red-700">
                       {t("pipeline.drawer.cancelledBadge")}
@@ -769,8 +787,19 @@ function LeadDrawer({
   // Comments oldest→newest for chat reading (getLeads returns newest-first).
   const chat = [...lead.lead_comments].reverse();
 
-  // Stage-specific gates + guidance.
-  const help = STAGE_HELP[parcours][lead.stage]?.[lang];
+  // Stage-specific gates + guidance. Sponsored Bootcamp leads skip the
+  // deposit/contract ask entirely (client response 2026-07-16 + the
+  // trainee.bootcamp.registration email fix) — override the generic
+  // deposit/contract copy at those two stages when funding is sponsored.
+  const isSponsored = lead.funding === "sponsored";
+  const help =
+    isSponsored && parcours === "bootcamp" && ["pre_registration", "deposit_contract"].includes(lead.stage)
+      ? {
+          what: t("pipeline.drawer.sponsoredWhat"),
+          waitingFor: t("pipeline.drawer.sponsoredWaitingFor"),
+          onAdvance: "",
+        }
+      : STAGE_HELP[parcours][lead.stage]?.[lang];
   const isEligibilityGate = parcours === "bootcamp" && lead.stage === "prerequisites";
   const isElearningGate = parcours === "helpmesee" && lead.stage === "elearning_check";
 
@@ -816,6 +845,12 @@ function LeadDrawer({
             <span className={`badge ${stageTone(parcours, lead.stage)}`}>
               {stageLabel(parcours, lead.stage)}
             </span>
+            {lead.funding === "sponsored" ? (
+              <span className="badge bg-violet-50 text-violet-700">
+                {t("pipeline.drawer.sponsoredBadge")}
+                {lead.sponsor_name ? ` · ${lead.sponsor_name}` : ""}
+              </span>
+            ) : null}
             {lead.cancelled_at ? (
               <span className="badge bg-red-50 text-red-700">
                 {t("pipeline.drawer.cancelledBadge")}
@@ -909,17 +944,25 @@ function LeadDrawer({
                 </button>
               ) : null}
 
-              {/* Bootcamp pré-inscription: caution waiver exception */}
+              {/* Bootcamp pré-inscription: caution waiver. Sponsored trainings
+                  auto-waive it (create_lead sets caution_waived from the
+                  training) — shown read-only, not a manual exception toggle. */}
               {parcours === "bootcamp" && lead.stage === "pre_registration" ? (
-                <button
-                  onClick={() => run(() => setCautionWaived(lead.id, !lead.caution_waived))}
-                  className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
-                    lead.caution_waived ? "bg-amber-50 text-amber-700" : "bg-ink-100 text-ink-500"
-                  }`}
-                  title={t("pipeline.drawer.depositWaiverTitle")}
-                >
-                  {lead.caution_waived ? t("pipeline.drawer.depositWaivedException") : t("pipeline.drawer.depositRequired")}
-                </button>
+                isSponsored ? (
+                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700">
+                    {t("pipeline.drawer.sponsoredNoDeposit")}
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => run(() => setCautionWaived(lead.id, !lead.caution_waived))}
+                    className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                      lead.caution_waived ? "bg-amber-50 text-amber-700" : "bg-ink-100 text-ink-500"
+                    }`}
+                    title={t("pipeline.drawer.depositWaiverTitle")}
+                  >
+                    {lead.caution_waived ? t("pipeline.drawer.depositWaivedException") : t("pipeline.drawer.depositRequired")}
+                  </button>
+                )
               ) : null}
 
               {/* Bootcamp confirmé: attendance gates the refund */}
@@ -1201,11 +1244,35 @@ function LeadDrawer({
           </div>
         ) : null}
 
+        {/* Sponsor (Bootcamp/Workshop, sponsored trainings only) */}
+        {parcours === "bootcamp" && isSponsored ? (
+          <div className="border-b border-ink-100 px-6 py-5">
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
+              {t("pipeline.drawer.sponsoredBadge")}
+            </p>
+            <div className="flex items-center gap-3">
+              {lead.sponsor_logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={lead.sponsor_logo_url}
+                  alt={lead.sponsor_name ?? ""}
+                  className="h-8 w-auto max-w-[8rem] object-contain"
+                />
+              ) : null}
+              <p className="text-[13px] font-semibold text-ink-900">
+                {lead.sponsor_name || "–"}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {/* Engagement contract + signed document — Bootcamp, only once the
             contract has been sent (pré-inscription / caution reçus). At the
             prérequis step the contract is just previewed + approved to send,
-            so nothing is signed yet. */}
+            so nothing is signed yet. Sponsored trainees skip this entirely —
+            no deposit means no commitment contract to request. */}
         {parcours === "bootcamp" &&
+        !isSponsored &&
         ["pre_registration", "deposit_contract"].includes(lead.stage) ? (
           <>
         <div className="border-b border-ink-100 px-6 py-5">

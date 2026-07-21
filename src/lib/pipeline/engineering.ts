@@ -17,7 +17,8 @@ const st = (
   short: Localized,
   tone: string,
   advanceLabel: Localized | null,
-): StageDef => ({ id, label, short, tone, advanceLabel });
+  optional = false,
+): StageDef => ({ id, label, short, tone, advanceLabel, optional });
 
 const A = "bg-amber-50 text-amber-700";
 const S = "bg-sky-50 text-sky-700";
@@ -55,6 +56,10 @@ const EXPLANT_COMMON = (formalisation: StageDef, firstReport: StageDef): StageDe
     { fr: "Complément", en: "Complement" },
     O,
     { fr: "Rapport complémentaire émis", en: "Complementary report issued" },
+    // Optional supplementary test: recorded when performed, but NOT a
+    // prerequisite for Fidélisation — a case may skip straight from the 1st
+    // report to Fidélisation (client requirement, 2026-07).
+    true,
   ),
   st(
     "follow_up",

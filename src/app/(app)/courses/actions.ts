@@ -45,14 +45,15 @@ export async function saveCourse(
   const titleFr = str(fd, "title_fr");
   if (!titleFr) return { error: "The French title is required." };
 
-  let objectives: unknown, program: unknown, supervisors: unknown;
+  let objectives: unknown, program: unknown, supervisors: unknown, sponsors: unknown;
   try {
     objectives = JSON.parse(str(fd, "objectives") || "[]");
     program = JSON.parse(str(fd, "program") || "[]");
     supervisors = JSON.parse(str(fd, "supervisors") || "[]");
-    if (![objectives, program, supervisors].every(Array.isArray)) throw new Error();
+    sponsors = JSON.parse(str(fd, "sponsors") || "[]");
+    if (![objectives, program, supervisors, sponsors].every(Array.isArray)) throw new Error();
   } catch {
-    return { error: "Objectives, program and supervisors must be valid JSON arrays." };
+    return { error: "Objectives, program, supervisors and sponsors must be valid JSON arrays." };
   }
 
   // Image: upload a new file if provided, else keep the existing URL.
@@ -66,6 +67,24 @@ export async function saveCourse(
       .upload(path, file, { contentType: file.type, upsert: true });
     if (upErr) return { error: `Image upload failed: ${upErr.message}` };
     image_url = sb.storage.from("course-images").getPublicUrl(path).data.publicUrl;
+  }
+
+  // Program PDF workbook: one .xlsx per training, private bucket, read back
+  // by GET /api/programs?session=<slug> (db/program_workbooks.sql).
+  let program_workbook_path: string | undefined;
+  const workbookFile = fd.get("program_workbook");
+  if (workbookFile instanceof File && workbookFile.size > 0) {
+    const path = `${str(fd, "__slug") || slugify(titleFr)}-${Date.now()}.xlsx`;
+    const { error: wbErr } = await sb.storage
+      .from("program-workbooks")
+      .upload(path, workbookFile, {
+        contentType:
+          workbookFile.type ||
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        upsert: true,
+      });
+    if (wbErr) return { error: `Program workbook upload failed: ${wbErr.message}` };
+    program_workbook_path = path;
   }
 
   // Optional bilingual { fr, en } block, only include when at least one side
@@ -92,10 +111,16 @@ export async function saveCourse(
     "teaching_methods",
     "evaluation_methods",
     "supervision_organization",
+    "accessibility_info",
+    "certificate_delivered",
+    "registration_info",
+    "price_note",
   ]) {
     const v = bi(k);
     if (v) qualiopiExtras[k] = v;
   }
+  const accessibilityReferent = str(fd, "accessibility_referent");
+  if (accessibilityReferent) qualiopiExtras.accessibility_referent = accessibilityReferent;
 
   const start = str(fd, "start_date");
   const row = {
@@ -112,6 +137,9 @@ export async function saveCourse(
     deposit_eur: num(fd, "deposit_eur"),
     capacity: num(fd, "capacity"),
     qualiopi: fd.get("qualiopi") != null,
+    program_type: str(fd, "program_type") || "bootcamp",
+    is_sponsored: fd.get("is_sponsored") != null,
+    sponsors,
     summary: { fr: str(fd, "summary_fr"), en: str(fd, "summary_en") },
     objectives,
     program,
@@ -129,6 +157,7 @@ export async function saveCourse(
     ...row,
     ...qualiopiExtras,
     ...(image_url !== null ? { image_url } : {}),
+    ...(program_workbook_path ? { program_workbook_path } : {}),
   };
 
   const editingSlug = str(fd, "__slug");

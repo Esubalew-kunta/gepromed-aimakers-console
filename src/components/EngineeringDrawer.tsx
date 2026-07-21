@@ -12,11 +12,14 @@ import {
   stageToneOf,
   advanceLabelOf,
   variantLabelOf,
+  findStage,
+  skipStageId,
 } from "@/lib/pipeline/core";
 import { getStageEmail, fillEmail } from "@/lib/pipeline/engineering-emails";
 import { useT, useLang } from "@/lib/i18n";
 import {
   advanceEngStage,
+  skipEngStage,
   setEngVariant,
   setEngExit,
   reopenEng,
@@ -58,6 +61,10 @@ export function EngineeringDrawer({
   const exited = Boolean(r.exited_at);
   const adv = advanceLabelOf(def, variantKey, r.stage, lang);
   const needsVariant = r.kind === "explant" && !r.variant && !exited;
+  // Optional-stage bypass: when the next stage is optional (e.g. the explant
+  // "Complément"), staff can jump straight to the following required stage
+  // (Fidélisation) without completing it.
+  const skipTarget = exited ? null : skipStageId(def, variantKey, r.stage);
   const stageIds = stageIdsFor(def, variantKey);
   const currentIdx = stageIds.indexOf(r.stage);
   const metaEntries = Object.entries(r.meta ?? {});
@@ -159,6 +166,11 @@ export function EngineeringDrawer({
                   <span className={current ? "font-semibold text-ink-900" : "text-ink-500"}>
                     {stageShortOf(def, variantKey, id, lang)}
                   </span>
+                  {findStage(def, variantKey, id)?.optional ? (
+                    <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-400">
+                      {t("engineering.optional")}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
@@ -224,28 +236,41 @@ export function EngineeringDrawer({
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            {adv ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              {adv ? (
+                <button
+                  onClick={() => run(() => advanceEngStage(r.id, r.kind, r.variant, r.stage))}
+                  className="btn-primary flex-1 !py-2 !text-sm"
+                >
+                  {adv} →
+                </button>
+              ) : (
+                <span className="badge flex-1 justify-center bg-emerald-50 py-2 text-emerald-700">
+                  {t("engineering.finished")}
+                </span>
+              )}
               <button
-                onClick={() => run(() => advanceEngStage(r.id, r.kind, r.variant, r.stage))}
-                className="btn-primary flex-1 !py-2 !text-sm"
+                onClick={() =>
+                  run(() =>
+                    setEngExit(r.id, def.exitStatus === "declined" ? "décliné" : "sans suite"),
+                  )
+                }
+                className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
+                title={t("engineering.exitTitle")}
               >
-                {adv} →
+                {t("engineering.exit")}
               </button>
-            ) : (
-              <span className="badge flex-1 justify-center bg-emerald-50 py-2 text-emerald-700">
-                {t("engineering.finished")}
-              </span>
-            )}
-            <button
-              onClick={() =>
-                run(() => setEngExit(r.id, def.exitStatus === "declined" ? "décliné" : "sans suite"))
-              }
-              className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
-              title={t("engineering.exitTitle")}
-            >
-              {t("engineering.exit")}
-            </button>
+            </div>
+            {skipTarget ? (
+              <button
+                onClick={() => run(() => skipEngStage(r.id, r.kind, r.variant, r.stage))}
+                className="btn-ghost w-full !py-2 !text-sm"
+                title={t("engineering.skipHint")}
+              >
+                {t("engineering.skipTo")} {stageShortOf(def, variantKey, skipTarget, lang)} →
+              </button>
+            ) : null}
           </div>
         )}
       </div>

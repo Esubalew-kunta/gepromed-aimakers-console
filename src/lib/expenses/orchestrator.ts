@@ -2,29 +2,16 @@ import "server-only";
 import { extractFile, type UploadedFile } from "./extract";
 import { convertToEUR, FxUnavailableError } from "./fx";
 import { buildProcessed } from "./normalize";
-import { computeDocKey, dedupeBatch, markIdempotent, writableExpenses } from "./dedup";
-import {
-  loadWorkbook,
-  getTemplateSheet,
-  readLedger,
-  writeLedger,
-  rebuildManagedSheets,
-  rebuildSummary,
-  workbookToBuffer,
-  sanitizeSheetName,
-  resolveSheetName,
-  managedSheetNames,
-  flattenTables,
-  readMileageRate,
-  type LedgerEntry,
-  type SheetRow,
-} from "./excel";
+import { computeDocKey, collapseSameFileDuplicates, dedupeBatch, markIdempotent, writableExpenses } from "./dedup";
+import { loadWorkbook, getTemplateSheet, sanitizeSheetName, readMileageRate } from "./excel";
 import type { AnalyzeResult, DepositContext, ProcessedExpense } from "./types";
 
 /**
- * End-to-end orchestration. analyzeBatch = read + extract + FX + dedup (returns
- * an editable recap, writes nothing). commitBatch = write the (reviewed)
- * expenses into Nathalie's master workbook and return the saved file.
+ * Analysis orchestration. analyzeBatch = read + extract + FX + dedup (returns an
+ * editable recap, writes nothing). Committing no longer touches the master: the
+ * commit route pushes the reviewed rows to the Google Sheet and records them in
+ * the database, which is the source of truth. The master is only an extraction
+ * template (validated + read for its mileage rate here).
  */
 
 export interface AnalyzeInput {
@@ -32,15 +19,18 @@ export interface AnalyzeInput {
   deposit: DepositContext;
   masterBuffer: Buffer;
   runId: string;
+  /** Already-committed doc_keys (from the DB) for "already processed" detection. */
+  committedKeys: Set<string>;
 }
 
 export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> {
-  const { files, deposit, masterBuffer, runId } = input;
+  const { files, deposit, masterBuffer, runId, committedKeys } = input;
 
+  // The master is an extraction TEMPLATE only: we read it to confirm it's a real
+  // Matrice and to pull the per-km mileage rate. Idempotence is sourced from the
+  // database (committedKeys), not from any ledger inside the workbook.
   const wb = await loadWorkbook(masterBuffer);
   getTemplateSheet(wb); // throws early if it's not the Matrice file
-  const ledger = readLedger(wb);
-  const ledgerKeys = new Set(ledger.map((e) => e.docKey));
   const mileageRate = readMileageRate(wb);
 
   const expenses: ProcessedExpense[] = [];
@@ -92,8 +82,11 @@ export async function analyzeBatch(input: AnalyzeInput): Promise<AnalyzeResult> 
     }
   }
 
+  // Collapse the same receipt extracted twice from ONE file (OCR-variant doc
+  // numbers) BEFORE docKey dedup, so a single bus ticket isn't written twice.
+  collapseSameFileDuplicates(expenses);
   dedupeBatch(expenses);
-  markIdempotent(expenses, ledgerKeys);
+  markIdempotent(expenses, committedKeys);
 
   return summarize(runId, deposit.description ? "master.xlsx" : "master.xlsx", expenses, skipped);
 }
@@ -129,95 +122,4 @@ export function summarize(
     ),
   );
   return { runId, masterFileName, expenses, skipped, groups, alerts, grandTotalEUR };
-}
-
-// ---------------------------------------------------------------------------
-
-function toSheetRow(e: ProcessedExpense): SheetRow {
-  return {
-    issueDate: e.issueDate,
-    purpose: e.purpose,
-    vendor: e.vendor,
-    location: e.location,
-    category: e.category,
-    amountEUR: e.amountEUR,
-    vatRecoverable: e.vatRecoverable,
-    originalCurrency: e.originalCurrency,
-    fx: e.fx,
-    distanceKm: e.distanceKm,
-    etude: e.etude,
-  };
-}
-
-export interface CommitInput {
-  masterBuffer: Buffer;
-  expenses: ProcessedExpense[]; // reviewed / edited full list
-  employeeName: string;
-  runId: string;
-}
-
-export interface CommitResult {
-  buffer: Buffer;
-  written: number;
-  grandTotalEUR: number;
-  alerts: string[];
-}
-
-export async function commitBatch(input: CommitInput): Promise<CommitResult> {
-  const { masterBuffer, expenses, employeeName, runId } = input;
-  const wb = await loadWorkbook(masterBuffer);
-  const template = getTemplateSheet(wb);
-
-  const ledger = readLedger(wb);
-  const existingKeys = new Set(ledger.map((e) => e.docKey));
-
-  const toWrite = writableExpenses(expenses).filter((e) => !existingKeys.has(e.docKey));
-
-  // Resolve target sheet names so we NEVER overwrite Nathalie's own sheets, and
-  // so all lines of the same trip in this batch land on one sheet.
-  const managed = managedSheetNames(ledger);
-  const claimed = new Set<string>();
-  const resolvedFor = new Map<string, string>(); // desired -> resolved (per batch)
-  for (const e of toWrite) {
-    const desired = sanitizeSheetName(e.sheetName);
-    let resolved = resolvedFor.get(desired.toLowerCase());
-    if (!resolved) {
-      resolved = resolveSheetName(wb, managed, desired, claimed);
-      resolvedFor.set(desired.toLowerCase(), resolved);
-      claimed.add(resolved);
-    }
-    e.sheetName = resolved;
-  }
-
-  for (const e of toWrite) {
-    const travelerLabel =
-      e.traveler && e.traveler !== "Non renseigné — à préciser" ? e.traveler : "Non renseigné — à préciser";
-    const entry: LedgerEntry = {
-      docKey: e.docKey,
-      fileHash: e.fileHash,
-      runId,
-      validated: true, // committed after Nathalie's review => locked
-      sheetName: e.sheetName,
-      tripLabel: e.tripLabel,
-      traveler: e.traveler,
-      travelerLabel,
-      period: e.period,
-      lieu: e.location || "—",
-      row: toSheetRow(e),
-    };
-    ledger.push(entry);
-  }
-
-  rebuildManagedSheets(wb, template, ledger);
-  const alerts = Array.from(new Set(expenses.flatMap((e) => (e.duplicateOfId || e.idempotentSkip ? [] : e.alerts))));
-  rebuildSummary(wb, ledger, employeeName, alerts);
-  writeLedger(wb, ledger);
-
-  // Convert all structured Table references to plain A1 and drop the tables so
-  // real Excel opens the file with no "repair" (ExcelJS mangles table XML).
-  flattenTables(wb);
-
-  const buffer = await workbookToBuffer(wb);
-  const grandTotalEUR = Number(ledger.reduce((s, e) => s + (e.row.amountEUR ?? 0), 0).toFixed(2));
-  return { buffer, written: toWrite.length, grandTotalEUR, alerts };
 }

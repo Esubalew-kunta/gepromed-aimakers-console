@@ -5,6 +5,92 @@
 
 ---
 
+## 2026-07-22 — Expense report: master→template, DB is source of truth (Model B)
+
+Reworked the whole **Expense report** so the master workbook is **only an extraction
+template**, and the **database (mirror of the shared Google Sheet) is the single source of
+truth**. This replaced the old "master.xlsx accumulates + is the ledger/idempotence store"
+model. Global/shared scope across users (matches the one shared Sheet).
+
+- **Preview/summary now reads the DB** (`committedReceipts()` in `storage.ts`, validated=true,
+  deduped by docKey) via `GET /api/expenses/preview` — NOT the master. Empty → headers + €0.00.
+- **Commit no longer touches the master**: `commit/route.ts` just pushes to the Sheet (n8n) +
+  `recordRun(..., "committed")`. Removed `commitBatch`/`saveMaster` from the commit path.
+- **Idempotence moved to the DB**: `committedDocKeys()` → `analyzeBatch({..., committedKeys})`
+  (was the master's hidden `_Ledger`). Instant now (no Supabase Storage read-after-write lag).
+- **Master's only remaining job**: analyze reads it to validate it's a Matrice + pull the
+  per-km mileage rate. It is never written/accumulated/previewed.
+- **Clear** = Sheet + DB only (master untouched).
+- **Removed** the baseline/blank feature built earlier same day (endpoint `expenses/baseline`,
+  `restoreMasterFromBaseline`/`emptyMaster`/`setBaselineFromMaster`/`baselineInfo`,
+  `blankLedger`/`emptyMasterBuffer`, the "Définir comme modèle"/"Repartir de zéro" buttons).
+  `excel.ts` still exports the now-unused ledger/commit engine (`commitBatch`, `writeLedger`,
+  `rebuildManagedSheets`, …) — dead but valid; left for a future prune.
+
+**Kept from earlier this session:**
+- **Same-file duplicate collapse** (`collapseSameFileDuplicates` in `dedup.ts`): one PDF the
+  vision model splits into 2 receipts (OCR-variant docKeys) → collapsed to 1, flagged, recoverable.
+- **Live review-table totals** (recompute €/sheets/ignored from the active set).
+
+**Also this session (final adjustments):**
+- **Force-include mints a fresh docKey** (`freshDocKey` in `ExpenseRunner.tsx`): "already
+  processed"/duplicate rows, when included, get a unique key so they're written as a GENUINE new
+  line (the Sheet upserts by docKey; a repeat would just update in place). Button relabels to
+  "ajouter comme nouvelle ligne" for idempotent rows.
+- **Commit success shows the Google Sheet URL** (n8n echoes `sheetUrl`; commit returns it) with
+  a copy-link + open button in `DoneCard`.
+- **Edited "ok" rows**: value inputs flag `edited:true` (new optional field on `ProcessedExpense`)
+  and show a blue **"modifié"** badge; the edited value is what commits (verified live).
+
+`npx tsc --noEmit` clean. All verified live on localhost against the real n8n Sheet workflow
+(`gbDvcckBbLsC4sEP`) + Supabase. ⚠️ Test commits left rows in the SHARED DB + Google Sheet
+(a €5.55 edit-test row + several €2.10 bus rows) — clear from the UI when convenient.
+
+---
+
+## 2026-07-21 — Real PDF generation for /api/programs (committed `a1f9b69`)
+
+Full context lives in `../gepromed-web/REDESIGN_PROGRESS.md` (session 2026-07-21 entry) —
+that session's real scope was gepromed-web (legacy-content parity pass), this console repo
+only got one focused change out of it:
+
+- **`/api/programs?format=pdf`** now returns a real binary PDF (pdfkit) with
+  `Content-Disposition: attachment` — a genuine file download, not the old
+  browser-print-only HTML page (still the default without `?format=pdf`).
+  Real Gepromed logo letterhead (`public/brand/logo-gepromed-color.png`, new),
+  tinted section headers, page numbers.
+- **Gotcha (will recur if pdfkit or a similar lib is touched again):** pdfkit's
+  bundled `.afm` font-metrics files break under Next's webpack bundling
+  ("Helvetica.afm ENOENT") unless excluded from bundling —
+  `next.config.mjs` → `serverExternalPackages: ["pdfkit"]` (this repo is Next 15;
+  gepromed-web is Next 14 and needs the older `experimental.serverComponentsExternalPackages`
+  key for the same fix).
+- Only `next.config.mjs`, `package.json`/`package-lock.json`,
+  `src/app/api/programs/route.ts`, and `public/brand/logo-gepromed-color.png` were
+  touched/committed this session — deliberately did **not** touch or commit the
+  large amount of other uncommitted work already sitting in this repo (leads
+  board, engineering pipeline, course/trainee actions, several `db/*.sql`
+  migrations, a few scripts) since it predates this session and wasn't reviewed.
+  Still uncommitted, still there, needs its own owner/review pass.
+
+---
+
+## 2026-07-14 — Session 3 (Re-enabled browser auto-translate + deployed)
+
+- **Deployed the whole Engineering build** to Render: committed (`f83df02`) + pushed to `main`
+  (autoDeploy on → `gepromed-ai-console.onrender.com`). `next build` verified locally first.
+- **Re-enabled Chrome/Google auto-translate** (`layout.tsx`, commit `04bac85`) — the FR/EN
+  toggle doesn't cover every section yet, so the client demo uses browser translation for the
+  rest. Removed the `google:notranslate` meta + `translate="no"` + `.notranslate` class that
+  the earlier `f36131c` fix had added. **Added a `beforeInteractive` guard** that patches
+  `Node.prototype.removeChild/insertBefore` to no-op when Translate rewrote a node's parent —
+  this is what prevents the "node to be removed is not a child" React crashes on dynamic lists
+  (expenses/skills/engineering) that motivated `f36131c`. So translate is back ON but crash-safe.
+- **Still to do on Render (manual):** set `ENG_EMAIL_WEBHOOK_URL` env var; run
+  `db/engineering_comments.sql` on Supabase (see the two entries below).
+
+---
+
 ## 2026-07-14 — Session 3 (Engineering — real n8n "Send" button wired)
 
 Extended the stage-email work (entry below) from staff-assist (copy / open-in-mail) to a real

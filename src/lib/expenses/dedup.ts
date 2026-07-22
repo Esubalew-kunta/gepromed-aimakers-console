@@ -32,6 +32,57 @@ function score(e: ProcessedExpense): number {
   return s;
 }
 
+/**
+ * Content signature for catching the SAME receipt extracted more than once from
+ * ONE file. Vision models sometimes split a single ticket into two objects with
+ * OCR-variant doc numbers (e.g. a €2.10 CTS bus ticket read as both
+ * "EB03296C83330200" and "92272760833330200"), which docKey-based dedup misses
+ * because the keys differ. Scoped by fileHash so we never merge genuinely
+ * separate files that happen to share a date/amount.
+ */
+function contentSignature(e: ProcessedExpense): string {
+  const amount =
+    e.amountEUR != null
+      ? e.amountEUR.toFixed(2)
+      : e.originalAmount != null
+        ? `${e.originalAmount}:${e.originalCurrency ?? ""}`
+        : "na";
+  const vendor = (e.vendor ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  return [e.fileHash, e.issueDate ?? "na", amount, e.originalCurrency ?? "na", e.category ?? "na", vendor].join("|");
+}
+
+/**
+ * Collapse receipts that are the same content extracted twice from the SAME
+ * file (regardless of docNumber). Keeps the best-scored one, marks the rest as
+ * duplicates, and flags the survivor for review so Nathalie can split it back
+ * in the rare case a file really held two identical purchases.
+ */
+export function collapseSameFileDuplicates(expenses: ProcessedExpense[]): ProcessedExpense[] {
+  const bySig = new Map<string, ProcessedExpense[]>();
+  for (const e of expenses) {
+    if (e.duplicateOfId) continue;
+    const sig = contentSignature(e);
+    if (!bySig.has(sig)) bySig.set(sig, []);
+    bySig.get(sig)!.push(e);
+  }
+
+  for (const group of bySig.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) => score(b) - score(a));
+    const primary = sorted[0];
+    for (const d of sorted.slice(1)) {
+      d.duplicateOfId = primary.id;
+      primary.mergedFromIds.push(d.id);
+    }
+    const label = `Même justificatif extrait ${group.length}× du fichier « ${primary.sourceFile} » → compté une seule fois (à vérifier)`;
+    primary.alerts = Array.from(new Set([...primary.alerts, label]));
+    if (!primary.reviewReasons.includes(label)) primary.reviewReasons.push(label);
+    primary.needsReview = true;
+  }
+
+  return expenses;
+}
+
 export function dedupeBatch(expenses: ProcessedExpense[]): ProcessedExpense[] {
   const byKey = new Map<string, ProcessedExpense[]>();
   for (const e of expenses) {

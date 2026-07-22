@@ -23,21 +23,36 @@ for (const k of CATEGORY_KEYS) HEADER_TO_CATEGORY[CATEGORY_COLUMN[k].label] = k;
 
 type Phase = "setup" | "analyzing" | "review" | "committing" | "done";
 
+// A committed expense line, read from the database (mirror of the shared Google
+// Sheet). The master workbook is only an extraction template now.
 type PreviewRow = {
-  sheetName: string;
-  traveler: string;
+  docKey: string | null;
+  sourceFile: string | null;
+  sheetName: string | null;
+  traveler: string | null;
   date: string | null;
-  vendor: string | null;
   category: string | null;
   amountEUR: number | null;
   vat: number | null;
   currency: string | null;
-  location: string | null;
 };
 type PreviewData = { rows: PreviewRow[]; sheets: string[]; total: number; found: boolean; error?: string };
 
 const eur = (n: number | null | undefined) =>
   n == null ? "–" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
+
+// When a user force-includes an already-processed / duplicate row, give it a
+// fresh unique docKey so it's written as a GENUINE new line — the Google Sheet
+// upserts by docKey (a repeated key would just update the existing row) and the
+// DB-sourced preview dedupes by docKey. A new key guarantees a distinct entry.
+function freshDocKey(original: string | null): string {
+  const base = (original || "MANUAL").replace(/~[a-z0-9]+$/i, ""); // don't stack suffixes
+  const rand =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `${base}~${rand}`;
+}
 
 export function ExpenseRunner() {
   const [phase, setPhase] = useState<Phase>("setup");
@@ -55,9 +70,11 @@ export function ExpenseRunner() {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sheetSynced, setSheetSynced] = useState<boolean | null>(null);
+  const [sheetUrl, setSheetUrl] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearMessage, setClearMessage] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const masterInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -69,24 +86,19 @@ export function ExpenseRunner() {
         setExtractionReady(d.extractionReady !== false);
       })
       .catch(() => {});
-  }, []);
+  }, [reloadKey]);
 
   const masterReady = masterFile != null || (useSaved && savedMaster);
 
-  // Preview the selected master (DB default or uploaded) so it shows side-by-side.
+  // The summary always reflects what's COMMITTED in the database (mirror of the
+  // shared Google Sheet), independent of which master template is selected.
+  // Re-fetched on load, after every commit, and after a clear (reloadKey).
   useEffect(() => {
     let cancelled = false;
     async function loadPreview() {
-      if (!(masterFile != null || (useSaved && savedMaster))) {
-        setPreview(null);
-        return;
-      }
       setPreviewLoading(true);
       try {
-        const fd = new FormData();
-        if (masterFile) fd.append("master", masterFile);
-        else fd.append("useSaved", "true");
-        const res = await fetch("/api/expenses/preview", { method: "POST", body: fd });
+        const res = await fetch("/api/expenses/preview");
         const d = (await res.json()) as PreviewData;
         if (!cancelled) setPreview(d);
       } catch {
@@ -99,7 +111,7 @@ export function ExpenseRunner() {
     return () => {
       cancelled = true;
     };
-  }, [masterFile, useSaved, savedMaster]);
+  }, [reloadKey]);
   const canAnalyze = masterReady && receipts.length > 0 && description.trim().length > 0;
 
   async function analyze() {
@@ -136,18 +148,18 @@ export function ExpenseRunner() {
     setPhase("committing");
     try {
       const fd = new FormData();
-      if (masterFile) fd.append("master", masterFile);
-      else fd.append("useSaved", "true");
       fd.append("expenses", JSON.stringify(result.expenses));
       fd.append("employeeName", "Nathalie");
       fd.append("runId", result.runId);
-      fd.append("fileName", result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx");
+      fd.append("fileName", result.masterFileName || "Matrice");
       const res = await fetch("/api/expenses/commit", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Échec de l'écriture.");
+      if (!res.ok) throw new Error(data.error || "Échec de l'enregistrement.");
       setSheetSynced(Boolean(data.sheetSynced));
-      setCommittedName(result.masterFileName || "Matrice LM_0226_rembt Frais.xlsx");
+      setSheetUrl(typeof data.sheetUrl === "string" ? data.sheetUrl : null);
+      setCommittedName(result.masterFileName || "Matrice");
       setPhase("done");
+      setReloadKey((k) => k + 1); // refresh the DB-sourced summary with the new rows
     } catch (e) {
       setError((e as Error).message);
       setPhase("review");
@@ -164,6 +176,9 @@ export function ExpenseRunner() {
       const sheetPart = data.sheetCleared ? "Google Sheet vidé." : "Google Sheet non vidé (vérifier la config).";
       setClearMessage(`${data.deletedRuns ?? 0} lot(s) supprimé(s) de la base · ${sheetPart}`);
       setConfirmClear(false);
+      // The DB is now empty → reflect it immediately, and re-fetch to confirm.
+      setPreview({ rows: [], sheets: [], total: 0, found: false });
+      setReloadKey((k) => k + 1);
     } catch (e) {
       setClearMessage((e as Error).message);
     } finally {
@@ -190,7 +205,7 @@ export function ExpenseRunner() {
           type="button"
           onClick={() => setConfirmClear(true)}
           className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-          title="Supprime les données enregistrées dans la base ET vide le Google Sheet partagé (téléchargez le fichier avant, si besoin)"
+          title="Vide toutes les dépenses enregistrées : base de données ET Google Sheet partagé. Le fichier maître (modèle) n'est pas touché. Téléchargez le Google Sheet avant, si besoin."
         >
           <Icon name="clipboard-check" className="h-4 w-4" />
           Effacer toutes les données
@@ -198,7 +213,7 @@ export function ExpenseRunner() {
         <a
           href="/api/expenses/download-sheet"
           className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50"
-          title="Télécharge l'état actuel du Google Sheet partagé (tout ce qui a été commité par tout le monde)"
+          title="Télécharge l'état actuel du Google Sheet partagé (tout ce qui a été enregistré par tout le monde)"
         >
           <Icon name="clipboard-check" className="h-4 w-4" />
           Télécharger le Google Sheet (.xlsx)
@@ -207,7 +222,7 @@ export function ExpenseRunner() {
       {confirmClear && (
         <ConfirmModal
           title="Effacer toutes les données de dépenses ?"
-          message="Ceci supprime définitivement l'historique des lots dans la base de données ET vide toutes les lignes du Google Sheet partagé (les en-têtes et le total cumulé restent). Le fichier maître Excel n'est pas touché. Téléchargez d'abord une copie si vous n'en avez pas encore — cette action est irréversible pour tout le monde utilisant ce Sheet."
+          message="Ceci vide définitivement TOUTES les dépenses enregistrées : l'historique dans la base de données ET toutes les lignes du Google Sheet partagé (les en-têtes et le total restent). Le fichier maître (modèle d'extraction) n'est pas touché. Téléchargez d'abord le Google Sheet si besoin — cette action est irréversible pour tout le monde."
           confirmLabel={clearing ? "Suppression…" : "Oui, tout effacer"}
           disabled={clearing}
           onConfirm={clearAllData}
@@ -246,7 +261,7 @@ export function ExpenseRunner() {
           <MasterPreview
             preview={preview}
             loading={previewLoading}
-            title="Aperçu du fichier maître (par défaut)"
+            title="Dépenses enregistrées (Google Sheet)"
           />
         </div>
       )}
@@ -257,7 +272,7 @@ export function ExpenseRunner() {
           <MasterPreview
             preview={preview}
             loading={previewLoading}
-            title="Fichier maître actuel — les lignes validées s'y ajouteront"
+            title="Dépenses déjà enregistrées (Google Sheet)"
           />
         </div>
       )}
@@ -265,8 +280,15 @@ export function ExpenseRunner() {
       {phase === "done" && (
         <DoneCard
           name={committedName}
-          total={result?.grandTotalEUR ?? 0}
+          total={
+            result
+              ? result.expenses
+                  .filter((e) => !e.duplicateOfId && !e.idempotentSkip)
+                  .reduce((s, e) => s + (e.amountEUR ?? 0), 0)
+              : 0
+          }
           sheetSynced={sheetSynced}
+          sheetUrl={sheetUrl}
           onReset={reset}
         />
       )}
@@ -523,6 +545,16 @@ function ReviewTable({
 }) {
   const active = result.expenses.filter((e) => !e.duplicateOfId && !e.idempotentSkip);
   const excluded = result.expenses.filter((e) => e.duplicateOfId || e.idempotentSkip);
+  // A value edit: flags the row `edited` so the reviewer sees their change is
+  // captured (and the edited value is what gets committed). Used by the field
+  // inputs; the include/exclude toggle uses onPatch directly (not a value edit).
+  const editField = (id: string, changes: Partial<ProcessedExpense>) => onPatch(id, { ...changes, edited: true });
+  // Totals shown in the header MUST be derived from the live `active` set, not
+  // from result.grandTotalEUR / result.groups (server snapshot at analyze time),
+  // so "inclure quand même" / re-exclude immediately update the €total, the
+  // sheet count and the ignored count.
+  const activeTotal = active.reduce((s, e) => s + (e.amountEUR ?? 0), 0);
+  const activeSheets = new Set(active.map((e) => e.sheetName)).size;
   // Render every row through ONE map with an identical cell structure (active
   // first, then excluded). Toggling "inclure quand même" only flips content/
   // styling — never the number or shape of <td> cells — so React never has to
@@ -534,7 +566,7 @@ function ReviewTable({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-ink-600">
           <span className="font-semibold text-ink-900">{active.length}</span> dépense(s) à enregistrer ·{" "}
-          <span className="font-semibold text-ink-900">{eur(result.grandTotalEUR)}</span> · {result.groups.length} feuille(s)
+          <span className="font-semibold text-ink-900">{eur(activeTotal)}</span> · {activeSheets} feuille(s)
           {excluded.length > 0 && <> · {excluded.length} ignorée(s) (doublons/déjà traités)</>}
         </div>
         <div className="flex gap-2">
@@ -587,8 +619,8 @@ function ReviewTable({
                   ? "bg-amber-50/50"
                   : "";
               const excludedTitle = e.duplicateOfId
-                ? "Doublon détecté dans ce lot, compté une seule fois. Cliquez « inclure quand même » pour l'écrire à nouveau."
-                : "Déjà présent dans le fichier maître (traité précédemment). Cliquez « inclure quand même » pour l'écrire à nouveau.";
+                ? "Doublon détecté dans ce lot, compté une seule fois. Cliquez pour l'ajouter comme une ligne distincte (nouvelle clé)."
+                : "Déjà enregistré (Google Sheet / base de données). Cliquez pour l'ajouter quand même comme une NOUVELLE ligne distincte.";
               return (
                 <tr key={e.id} className={rowClass} title={isExcluded ? excludedTitle : undefined}>
                   <td className="px-2.5 py-2 text-ink-500">{e.sourceFile}</td>
@@ -598,7 +630,7 @@ function ReviewTable({
                     ) : (
                       <select
                         value={e.category ?? ""}
-                        onChange={(ev) => onPatch(e.id, { category: (ev.target.value || null) as CategoryKey | null })}
+                        onChange={(ev) => editField(e.id, { category: (ev.target.value || null) as CategoryKey | null })}
                         className="rounded border border-ink-200 px-1.5 py-1"
                       >
                         <option value="">– à choisir –</option>
@@ -617,7 +649,7 @@ function ReviewTable({
                           ) : (
                             <input
                               value={e.issueDateLabel || ""}
-                              onChange={(ev) => onPatch(e.id, { issueDateLabel: ev.target.value })}
+                              onChange={(ev) => editField(e.id, { issueDateLabel: ev.target.value })}
                               className="w-24 rounded border border-ink-200 px-1.5 py-1"
                             />
                           )}
@@ -632,7 +664,7 @@ function ReviewTable({
                           ) : (
                             <input
                               value={e.etude || ""}
-                              onChange={(ev) => onPatch(e.id, { etude: ev.target.value || null })}
+                              onChange={(ev) => editField(e.id, { etude: ev.target.value || null })}
                               placeholder="—"
                               title="Non extrait par l'IA — saisie manuelle"
                               className="w-24 rounded border border-ink-200 px-1.5 py-1"
@@ -649,7 +681,7 @@ function ReviewTable({
                           ) : (
                             <input
                               value={e.purpose || ""}
-                              onChange={(ev) => onPatch(e.id, { purpose: ev.target.value })}
+                              onChange={(ev) => editField(e.id, { purpose: ev.target.value })}
                               className="w-36 rounded border border-ink-200 px-1.5 py-1"
                             />
                           )}
@@ -664,7 +696,7 @@ function ReviewTable({
                           ) : (
                             <input
                               value={e.location || ""}
-                              onChange={(ev) => onPatch(e.id, { location: ev.target.value })}
+                              onChange={(ev) => editField(e.id, { location: ev.target.value })}
                               className="w-32 rounded border border-ink-200 px-1.5 py-1"
                             />
                           )}
@@ -681,7 +713,7 @@ function ReviewTable({
                               type="number"
                               step="0.01"
                               value={e.vatRecoverable ?? ""}
-                              onChange={(ev) => onPatch(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
+                              onChange={(ev) => editField(e.id, { vatRecoverable: ev.target.value === "" ? null : Number(ev.target.value) })}
                               className="w-16 rounded border border-ink-200 px-1.5 py-1"
                             />
                           )}
@@ -698,7 +730,7 @@ function ReviewTable({
                               type="number"
                               step="0.1"
                               value={e.distanceKm ?? ""}
-                              onChange={(ev) => onPatch(e.id, { distanceKm: ev.target.value === "" ? null : Number(ev.target.value) })}
+                              onChange={(ev) => editField(e.id, { distanceKm: ev.target.value === "" ? null : Number(ev.target.value) })}
                               title="Distance réelle (si indiquée sur le justificatif) — calcule le remboursement via le barème du fichier maître"
                               className="w-16 rounded border border-ink-200 px-1.5 py-1"
                             />
@@ -714,7 +746,7 @@ function ReviewTable({
                           ) : (
                             <input
                               value={e.originalCurrency || ""}
-                              onChange={(ev) => onPatch(e.id, { originalCurrency: ev.target.value || null })}
+                              onChange={(ev) => editField(e.id, { originalCurrency: ev.target.value || null })}
                               className="w-16 rounded border border-ink-200 px-1.5 py-1"
                             />
                           )}
@@ -731,7 +763,7 @@ function ReviewTable({
                               type="number"
                               step="0.01"
                               value={e.amountEUR ?? ""}
-                              onChange={(ev) => onPatch(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
+                              onChange={(ev) => editField(e.id, { amountEUR: ev.target.value === "" ? null : Number(ev.target.value) })}
                               className="w-24 rounded border border-ink-200 px-1.5 py-1"
                             />
                           )}
@@ -762,18 +794,36 @@ function ReviewTable({
                     {isExcluded ? (
                       <button
                         type="button"
-                        onClick={() => onPatch(e.id, { duplicateOfId: null, idempotentSkip: false })}
+                        onClick={() =>
+                          onPatch(e.id, {
+                            duplicateOfId: null,
+                            idempotentSkip: false,
+                            docKey: freshDocKey(e.docKey),
+                          })
+                        }
                         className="inline-block whitespace-nowrap rounded bg-ink-200 px-1.5 py-0.5 text-[10px] font-semibold text-ink-700 hover:bg-ink-300"
                         title={excludedTitle}
                       >
-                        inclure quand même
+                        {e.idempotentSkip ? "ajouter comme nouvelle ligne" : "inclure quand même"}
                       </button>
-                    ) : e.needsReview ? (
-                      <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title={e.reviewReasons.join(" · ")}>
-                        à vérifier
-                      </span>
                     ) : (
-                      <span className="inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">ok</span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {e.needsReview ? (
+                          <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title={e.reviewReasons.join(" · ")}>
+                            à vérifier
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">ok</span>
+                        )}
+                        {e.edited && (
+                          <span
+                            className="inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700"
+                            title="Valeur modifiée manuellement — c'est la valeur mise à jour qui sera enregistrée."
+                          >
+                            modifié
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -799,6 +849,9 @@ function ReviewTable({
   );
 }
 
+// The committed-expenses summary, read from the DB (mirror of the shared Google
+// Sheet). Always shows the column headers; when nothing is committed it shows
+// the headers with a €0.00 total. The master workbook is NOT the source here.
 function MasterPreview({
   preview,
   loading,
@@ -808,48 +861,46 @@ function MasterPreview({
   loading: boolean;
   title: string;
 }) {
+  const rows = preview?.rows ?? [];
+  const total = preview?.total ?? 0;
+  const cols = ["Justificatif", "Date", "Catégorie", "Montant EUR", "Devise"];
   return (
     <div className="rounded-2xl border border-ink-200 bg-white p-5">
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold text-ink-900">{title}</div>
-        {preview?.found && !preview.error ? (
-          <span className="text-xs text-ink-500">
-            {preview.rows.length} ligne(s) · {eur(preview.total)}
-          </span>
-        ) : null}
+        <span className="text-xs text-ink-500">
+          {loading ? "Chargement…" : `${rows.length} ligne(s) · ${eur(total)}`}
+        </span>
       </div>
-      {loading ? (
-        <p className="mt-3 text-xs text-ink-400">Chargement de l&apos;aperçu…</p>
-      ) : !preview || !preview.found ? (
-        <p className="mt-3 text-xs text-ink-400">
-          Aucun fichier maître enregistré. Importez la Matrice, elle sera enregistrée et proposée par défaut.
-        </p>
-      ) : preview.error ? (
+      {preview?.error ? (
         <p className="mt-3 text-xs text-red-600">{preview.error}</p>
-      ) : preview.rows.length === 0 ? (
-        <p className="mt-3 text-xs text-ink-400">
-          Le fichier maître ne contient pas encore de dépenses enregistrées.
-        </p>
       ) : (
         <div className="mt-3 max-h-[440px] overflow-auto rounded-lg border border-ink-100">
           <table className="w-full min-w-[520px] text-left text-[11px]">
             <thead className="sticky top-0 bg-ink-50 text-ink-500">
               <tr>
-                {["Feuille", "Date", "Fournisseur", "Catégorie", "Montant EUR"].map((h) => (
+                {cols.map((h) => (
                   <th key={h} className="px-2 py-1.5 font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
-              {preview.rows.map((r, i) => (
-                <tr key={`${r.sheetName}-${r.date}-${r.vendor}-${r.amountEUR}-${i}`}>
-                  <td className="px-2 py-1.5 text-ink-500">{r.sheetName}</td>
+              {rows.map((r, i) => (
+                <tr key={`${r.docKey ?? r.sourceFile}-${r.date}-${r.amountEUR}-${i}`}>
+                  <td className="px-2 py-1.5 text-ink-700">{r.sourceFile || "–"}</td>
                   <td className="px-2 py-1.5">{r.date || "–"}</td>
-                  <td className="px-2 py-1.5 text-ink-700">{r.vendor || "–"}</td>
                   <td className="px-2 py-1.5 text-ink-600">{categoryLabel(r.category)}</td>
                   <td className="px-2 py-1.5 font-medium text-ink-900">{eur(r.amountEUR)}</td>
+                  <td className="px-2 py-1.5 text-ink-500">{r.currency || "–"}</td>
                 </tr>
               ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={cols.length} className="px-2 py-6 text-center text-ink-400">
+                    {loading ? "Chargement…" : "Aucune dépense enregistrée · €0,00"}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -859,27 +910,37 @@ function MasterPreview({
 }
 
 function DoneCard({
-  name,
   total,
   sheetSynced,
+  sheetUrl,
   onReset,
 }: {
   name: string | null;
   total: number;
   sheetSynced: boolean | null;
+  sheetUrl: string | null;
   onReset: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+  async function copyLink() {
+    if (!sheetUrl) return;
+    try {
+      await navigator.clipboard.writeText(sheetUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked — the link is still clickable below */
+    }
+  }
   return (
     <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
         <Icon name="clipboard-check" className="h-6 w-6" />
       </div>
       <div>
-        <div className="text-sm font-semibold text-emerald-900">
-          Fichier maître mis à jour et enregistré
-        </div>
+        <div className="text-sm font-semibold text-emerald-900">Dépenses enregistrées</div>
         <p className="mt-1 text-xs text-emerald-700">
-          {name} · total cumulé {eur(total)}. Le fichier est enregistré dans la base et proposé par défaut au prochain lot.
+          {eur(total)} enregistré(s). Les valeurs (y compris vos modifications) sont écrites dans le Google Sheet partagé et la base.
         </p>
         <p className="mt-2 text-xs font-medium">
           {sheetSynced ? (
@@ -890,10 +951,43 @@ function DoneCard({
             </span>
           )}
         </p>
-        <p className="mt-2 text-[11px] text-emerald-700">
-          Téléchargez le fichier à tout moment avec le bouton « Télécharger le Google Sheet » en haut de page.
-        </p>
       </div>
+
+      {sheetSynced && sheetUrl && (
+        <div className="mx-auto max-w-xl space-y-2 rounded-xl border border-emerald-200 bg-white p-3">
+          <div className="text-[11px] font-semibold text-ink-600">Lien du Google Sheet</div>
+          <div className="flex items-center gap-2">
+            <a
+              href={sheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 truncate rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-left text-[11px] font-mono text-brand-700 hover:bg-ink-100"
+              title={sheetUrl}
+            >
+              {sheetUrl}
+            </a>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700"
+            >
+              {copied ? "Copié ✓" : "Copier le lien"}
+            </button>
+            <a
+              href={sheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-lg border border-ink-200 px-3 py-1.5 text-[11px] font-semibold text-ink-700 hover:bg-ink-50"
+            >
+              Ouvrir ↗
+            </a>
+          </div>
+        </div>
+      )}
+
+      <p className="text-[11px] text-emerald-700">
+        Téléchargez l&apos;état complet à tout moment avec « Télécharger le Google Sheet » en haut de page.
+      </p>
       <button onClick={onReset} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
         Traiter un nouveau lot
       </button>

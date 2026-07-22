@@ -36,6 +36,10 @@ async function clearGoogleSheet(): Promise<boolean> {
  * deleted the clicking user's own runs while the Sheet was wiped for
  * everyone — looking exactly like "it only cleared the Sheet, not the DB."
  * Admin-only given the blast radius.
+ *
+ * The master workbook is deliberately NOT touched — it's only an extraction
+ * template now, not a data store. After a clear, the preview (which reads the
+ * database) shows just the headers with a €0.00 total.
  */
 export async function POST() {
   const user = await getSessionUser();

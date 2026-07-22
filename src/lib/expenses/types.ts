@@ -259,6 +259,8 @@ export interface ProcessedExpense {
   needsReview: boolean;
   reviewReasons: string[];
   alerts: string[];
+  /** true once the reviewer edited a value in the UI (so the edited value is committed). */
+  edited?: boolean;
   /** true once written & validated (locked); never re-written. */
   locked: boolean;
 }

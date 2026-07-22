@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { getSessionUser } from "@/lib/auth";
 import { analyzeBatch, summarize } from "@/lib/expenses/orchestrator";
 import { isExtractionConfigured, type UploadedFile } from "@/lib/expenses/extract";
-import { loadMaster, saveMaster, saveReceipt, recordRun } from "@/lib/expenses/storage";
+import { loadMaster, saveMaster, saveReceipt, recordRun, committedDocKeys } from "@/lib/expenses/storage";
 import type { DepositContext } from "@/lib/expenses/types";
 
 export const runtime = "nodejs";
@@ -129,7 +129,8 @@ export async function POST(req: Request) {
   };
 
   try {
-    const result = await analyzeBatch({ files: uploaded, deposit, masterBuffer, runId });
+    const committedKeys = await committedDocKeys();
+    const result = await analyzeBatch({ files: uploaded, deposit, masterBuffer, runId, committedKeys });
     result.masterFileName = masterName;
     if (preSkipped.length > 0) {
       result.skipped = [...preSkipped, ...result.skipped];

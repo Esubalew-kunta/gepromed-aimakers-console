@@ -12,6 +12,12 @@ import type { AnalyzeResult, ProcessedExpense } from "./types";
 
 const BUCKET = "expense-files";
 const MASTER_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+// The master is overwritten constantly (every commit / reset). Supabase Storage
+// otherwise serves downloads with a 1h Cache-Control, so a fresh read right
+// after a write returned the STALE workbook for ~15-20s — which made the preview
+// show old rows after a blank/commit and briefly broke cross-run idempotence.
+// cacheControl "0" makes each overwrite immediately visible on the next read.
+const MASTER_UPLOAD = { contentType: MASTER_XLSX, upsert: true, cacheControl: "0" } as const;
 
 function masterPath(email: string): string {
   return `${email}/master.xlsx`;
@@ -21,7 +27,7 @@ export async function saveMaster(email: string, buffer: Buffer): Promise<void> {
   const sb = supabaseServer();
   if (!sb) return;
   try {
-    await sb.storage.from(BUCKET).upload(masterPath(email), buffer, { contentType: MASTER_XLSX, upsert: true });
+    await sb.storage.from(BUCKET).upload(masterPath(email), buffer, MASTER_UPLOAD);
   } catch {
     /* best-effort */
   }
@@ -47,6 +53,79 @@ export async function masterInfo(email: string): Promise<{ exists: boolean } | n
     return { exists: Boolean(data && data.some((f) => f.name === "master.xlsx")) };
   } catch {
     return null;
+  }
+}
+
+/**
+ * A committed expense line as shown in the preview / summary. Sourced from the
+ * database (the mirror of the shared Google Sheet), NOT from the master file —
+ * the master is only an extraction template now.
+ */
+export interface CommittedRow {
+  docKey: string | null;
+  sourceFile: string | null;
+  sheetName: string | null;
+  traveler: string | null;
+  date: string | null;
+  category: string | null;
+  amountEUR: number | null;
+  vat: number | null;
+  currency: string | null;
+}
+
+/**
+ * Every committed expense (global — all users, matching the one shared Sheet),
+ * deduped by doc_key so the preview mirrors the Google Sheet (which upserts by
+ * docKey). Newest committed row wins on a repeated docKey.
+ */
+export async function committedReceipts(): Promise<CommittedRow[]> {
+  const sb = supabaseServer();
+  if (!sb) return [];
+  try {
+    const { data, error } = await sb
+      .from("expense_receipts")
+      .select(
+        "doc_key, source_file, sheet_name, traveler, issue_date, category, amount_eur, vat_recoverable, original_currency, created_at",
+      )
+      .eq("validated", true)
+      .order("created_at", { ascending: true });
+    if (error || !data) return [];
+    const byKey = new Map<string, (typeof data)[number]>();
+    for (const r of data) {
+      const key = r.doc_key || `${r.source_file}:${r.issue_date}:${r.amount_eur}`;
+      byKey.set(key, r); // asc by created_at → latest committed wins
+    }
+    return [...byKey.values()]
+      .map((r) => ({
+        docKey: r.doc_key,
+        sourceFile: r.source_file,
+        sheetName: r.sheet_name,
+        traveler: r.traveler,
+        date: r.issue_date,
+        category: r.category,
+        amountEUR: r.amount_eur != null ? Number(r.amount_eur) : null,
+        vat: r.vat_recoverable != null ? Number(r.vat_recoverable) : null,
+        currency: r.original_currency,
+      }))
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The set of already-committed doc_keys (global), used for "already processed"
+ * idempotence at analyze time now that the master no longer stores a ledger.
+ */
+export async function committedDocKeys(): Promise<Set<string>> {
+  const sb = supabaseServer();
+  if (!sb) return new Set();
+  try {
+    const { data, error } = await sb.from("expense_receipts").select("doc_key").eq("validated", true);
+    if (error || !data) return new Set();
+    return new Set(data.map((r) => r.doc_key).filter((k): k is string => Boolean(k)));
+  } catch {
+    return new Set();
   }
 }
 

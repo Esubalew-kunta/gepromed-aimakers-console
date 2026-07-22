@@ -12,6 +12,14 @@ const PATHS: Record<string, React.ReactNode> = {
     </>
   ),
   activity: <path d="M3 12h4l2 7 4-14 2 7h4" />,
+  "bar-chart": (
+    <>
+      <path d="M4 20h16" />
+      <path d="M6 20v-6" />
+      <path d="M12 20V6" />
+      <path d="M18 20v-9" />
+    </>
+  ),
   "clipboard-check": (
     <>
       <rect x="8" y="4" width="8" height="4" rx="1" />

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ExpenseUploader } from "./ExpenseUploader";
+import { ExpenseAnalytics } from "./ExpenseAnalytics";
 import {
   CATEGORY_KEYS,
   CATEGORY_COLUMN,
@@ -71,6 +72,7 @@ export function ExpenseRunner() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sheetSynced, setSheetSynced] = useState<boolean | null>(null);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearMessage, setClearMessage] = useState<string | null>(null);
@@ -197,10 +199,22 @@ export function ExpenseRunner() {
     setError(null);
   }
 
+  const hasCommitted = Boolean(preview?.found && preview.rows.length > 0);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-end gap-2">
         {clearMessage && <span className="text-xs text-ink-500">{clearMessage}</span>}
+        <button
+          type="button"
+          onClick={() => setShowAnalytics(true)}
+          disabled={!hasCommitted}
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50"
+          title={hasCommitted ? "Voir les graphiques d'analyse des dépenses enregistrées" : "Aucune dépense enregistrée à analyser"}
+        >
+          <Icon name="bar-chart" className="h-4 w-4" />
+          Voir l&apos;analyse des dépenses
+        </button>
         <button
           type="button"
           onClick={() => setConfirmClear(true)}
@@ -228,6 +242,38 @@ export function ExpenseRunner() {
           onConfirm={clearAllData}
           onCancel={() => setConfirmClear(false)}
         />
+      )}
+      {showAnalytics && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
+          onClick={() => setShowAnalytics(false)}
+        >
+          <div
+            className="w-full max-w-5xl rounded-2xl bg-white shadow-xl"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <Icon name="bar-chart" className="h-4 w-4 text-brand-600" />
+                Analyse des dépenses
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAnalytics(false)}
+                className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-600 hover:bg-ink-50"
+              >
+                Fermer ✕
+              </button>
+            </div>
+            <div className="p-4 sm:p-5">
+              {hasCommitted && preview ? (
+                <ExpenseAnalytics rows={preview.rows} embedded />
+              ) : (
+                <p className="py-8 text-center text-sm text-ink-400">Aucune dépense enregistrée à analyser.</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
       {!extractionReady && (
         <Banner tone="amber">

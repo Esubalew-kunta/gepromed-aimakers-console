@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-07-23 — Skills: imported the 16 real skills + fixed run-recording
+
+- **The `/skills` catalog was showing the 8 demo skills, not the repo's 16 real ones.**
+  The app reads skills at runtime from the Supabase `skills` table (`src/lib/skills-data.ts`),
+  and `db/skills_real.sql` (generated from `skills/` by `build-skills-sql.mjs`) had never been run.
+  - Added **`scripts/import-skills.mjs`** (upserts the 16 rows via the service-role key, deletes
+    non-repo skills; the 419 KB SQL was impractical to push through a tool call) and refactored
+    `build-skills-sql.mjs` to export `buildAllRowObjects()`/`skillKeys`. **Applied** → table now
+    has the **16 real `gepromed-*` skills** (real prompts + input forms), 8 demos removed.
+- **Bug fixed — run history/counts were silently broken.** `skill_runs` had `skill_id (uuid)` but
+  no `skill_key`, while the code (`runSkillAction`, `getMonthlyRunCounts`) uses `skill_key`. The
+  insert is in a try/catch, so runs succeeded but were never recorded → "runs this month" stuck at 0.
+  **Applied `db/skill_runs_key.sql`** (adds `skill_key` + index) to Supabase via MCP.
+- **Verified add/edit/run end-to-end** with `scripts/test-skill-crud.mjs` (15/15 pass): create with
+  slugified key, read-back, edit, live Claude run following the *edited* prompt, `skill_runs` record
+  + monthly count. Self-cleaning.
+- Both fixes are live for localhost **and** Render (shared Supabase `hdvqiiprylrrzrkydtpa`).
+
+---
+
 ## 2026-07-22 — Expense report: master→template, DB is source of truth (Model B)
 
 Reworked the whole **Expense report** so the master workbook is **only an extraction

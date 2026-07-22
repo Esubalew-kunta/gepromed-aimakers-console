@@ -157,7 +157,9 @@ function dq(content) {
   return t + content.split(t).join("") + t;
 }
 
-function buildRow(skill) {
+/** Build a plain row OBJECT for one skill (shared by the SQL writer and the
+ *  direct-upsert importer scripts/import-skills.mjs). */
+export function buildRowObject(skill) {
   const skillPath = join(SKILLS_DIR, skill.key);
   if (!existsSync(skillPath)) throw new Error(`skill folder missing: ${skill.key}`);
 
@@ -180,26 +182,59 @@ function buildRow(skill) {
 
   const description = firstSentence(frontmatterDescription(skillMd)) || skill.name;
 
+  return {
+    key: skill.key,
+    name: skill.name,
+    description,
+    category: skill.category,
+    icon: skill.icon,
+    tags: skill.tags,
+    owner: skill.owner,
+    model: skill.model,
+    status: skill.status,
+    runs_this_month: 0, // app overwrites with real count
+    avg_minutes_saved: skill.avgMinutesSaved,
+    system_prompt: systemPrompt,
+    inputs: skill.inputs,
+    active: true,
+  };
+}
+
+/** Serialize a row object into an SQL VALUES tuple (dollar-quoted). */
+function rowToSqlTuple(o) {
   const cols = [
-    dq(skill.key),
-    dq(skill.name),
-    dq(description),
-    dq(skill.category),
-    dq(skill.icon),
-    dq(JSON.stringify(skill.tags)),
-    dq(skill.owner),
-    dq(skill.model),
-    dq(skill.status),
-    "0", // runs_this_month (app overwrites with real count)
-    String(skill.avgMinutesSaved),
-    dq(systemPrompt),
-    dq(JSON.stringify(skill.inputs)),
-    "true",
+    dq(o.key),
+    dq(o.name),
+    dq(o.description),
+    dq(o.category),
+    dq(o.icon),
+    dq(JSON.stringify(o.tags)),
+    dq(o.owner),
+    dq(o.model),
+    dq(o.status),
+    String(o.runs_this_month),
+    String(o.avg_minutes_saved),
+    dq(o.system_prompt),
+    dq(JSON.stringify(o.inputs)),
+    String(o.active),
   ];
   return `(\n  ${cols.join(",\n  ")}\n)`;
 }
 
-const rows = config.skills.map(buildRow);
+/** All 16 skill row objects, in config order. */
+export function buildAllRowObjects() {
+  return config.skills.map(buildRowObject);
+}
+
+/** The 16 real skill keys (used to delete demos). */
+export const skillKeys = config.skills.map((s) => s.key);
+
+// ---- SQL file generation (only when run directly: `node build-skills-sql.mjs`) ----
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+
+const rows = config.skills.map(buildRowObject).map(rowToSqlTuple);
 const keyList = config.skills.map((s) => `'${s.key}'`).join(", ");
 
 const sql = `-- ============================================================================
@@ -257,3 +292,5 @@ if (warnings.length) {
 } else {
   console.log("No warnings.");
 }
+
+} // end isMain

@@ -21,6 +21,10 @@
 - **Verified add/edit/run end-to-end** with `scripts/test-skill-crud.mjs` (15/15 pass): create with
   slugified key, read-back, edit, live Claude run following the *edited* prompt, `skill_runs` record
   + monthly count. Self-cleaning.
+- **Also spot-checked in the real UI** (headless browser, authed admin session): ran
+  gepromed-email-reformulation via the actual run form → live Claude output rendered → `skill_runs`
+  row written (skill_key + 1154-char output) → the skill card ticked **0 → "1 run this month"**.
+  Test run then deleted (counts back to 0).
 - Both fixes are live for localhost **and** Render (shared Supabase `hdvqiiprylrrzrkydtpa`).
 
 ---

@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-07-23 — Reusable sponsor picker on the training form (client pt. 4 & 5)
+
+Client wants training creation to **pick sponsor(s)** (one or many) from a reusable list, plus
+an **"Add new sponsor"** popup (logo required, name required, website optional) that saves the
+sponsor for reuse. (Pt. 3 — the Sponsor section on the public training detail page — is the
+`gepromed-web` app, not this repo.)
+
+- **Discovery:** a `public.sponsors` table + public `sponsor-logos` bucket **already existed**
+  (3 rows w/ uploaded logos, created 2026-07-22) — the data layer was there, the UI/API were not.
+  Schema is `id, name, logo_url, website_url, created_at, updated_at` (note `website_url`, no
+  `created_by`). `db/sponsors.sql` now documents that exact shape (create-if-not-exists no-op).
+- **New `GET/POST /api/sponsors`** (`src/app/api/sponsors/route.ts`): GET lists the library; POST
+  (admin) takes multipart logo+name+website, uploads the logo to `sponsor-logos` (public URL),
+  inserts the row, returns the sponsor. Matches the existing schema.
+- **New `SponsorPicker.tsx`**: loads the library, multi-select existing sponsors (chips + grid),
+  and an **Add-new modal** (logo upload w/ preview, name, website) that creates + auto-selects.
+  Replaced the old inline "type name/logoURL/website each time" rows in `CourseForm`.
+- `Sponsor` type gained optional `id` (library ref). Selected sponsors still serialize into the
+  existing `trainings.sponsors` jsonb, so the public site reads them unchanged.
+- **Verified in the real browser** (authed): toggled Sponsored → picker showed the 3 library
+  sponsors → selected 2 (multi) → opened Add-new modal → uploaded a logo + name + website →
+  submit created it, closed the modal, auto-selected it (form `sponsors` hidden field held both).
+  Public logo URL returns 200. Test sponsor cleaned up. `tsc` clean.
+
+---
+
 ## 2026-07-23 — Skills: imported the 16 real skills + fixed run-recording
 
 - **The `/skills` catalog was showing the 8 demo skills, not the repo's 16 real ones.**

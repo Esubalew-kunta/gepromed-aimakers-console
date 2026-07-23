@@ -26,6 +26,8 @@ export interface ProgramDay {
   items: Bi[];
 }
 export interface Sponsor {
+  /** Library id when picked from the reusable sponsor list (db/sponsors.sql). */
+  id?: string;
   name: string;
   logoUrl?: string;
   website?: string;

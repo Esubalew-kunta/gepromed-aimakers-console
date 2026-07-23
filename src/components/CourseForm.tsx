@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { SponsorPicker } from "./SponsorPicker";
 import {
   saveCourse,
   deleteCourse,
@@ -223,68 +224,7 @@ export function CourseForm({ course }: { course?: Course }) {
           />
           Sponsored by a third party (lab/company) — hides the price publicly
         </label>
-        {isSponsored ? (
-          <div className="space-y-3 rounded-xl border border-ink-100 p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-ink-700">Sponsor(s)</h3>
-              <button
-                type="button"
-                onClick={() =>
-                  setSponsors((s) => [...s, { name: "", logoUrl: "", website: "", referentName: "" }])
-                }
-                className="btn-ghost !py-1 !text-xs"
-              >
-                + Add sponsor
-              </button>
-            </div>
-            {sponsors.length === 0 ? (
-              <p className="text-xs text-ink-400">No sponsor yet — add at least one.</p>
-            ) : null}
-            {sponsors.map((s, i) => (
-              <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-                <input
-                  value={s.name}
-                  onChange={(e) =>
-                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))
-                  }
-                  placeholder="Sponsor name"
-                  className="input"
-                />
-                <input
-                  value={s.logoUrl ?? ""}
-                  onChange={(e) =>
-                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, logoUrl: e.target.value } : x)))
-                  }
-                  placeholder="Logo URL"
-                  className="input"
-                />
-                <input
-                  value={s.website ?? ""}
-                  onChange={(e) =>
-                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, website: e.target.value } : x)))
-                  }
-                  placeholder="Website"
-                  className="input"
-                />
-                <input
-                  value={s.referentName ?? ""}
-                  onChange={(e) =>
-                    setSponsors((arr) => arr.map((x, j) => (j === i ? { ...x, referentName: e.target.value } : x)))
-                  }
-                  placeholder="Referent contact (optional)"
-                  className="input"
-                />
-                <button
-                  type="button"
-                  onClick={() => setSponsors((arr) => arr.filter((_, j) => j !== i))}
-                  className="rounded-lg px-2 text-sm text-red-500 hover:bg-red-50"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        {isSponsored ? <SponsorPicker value={sponsors} onChange={setSponsors} /> : null}
       </section>
 
       {/* Qualiopi, public training detail fields */}

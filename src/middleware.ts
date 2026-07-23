@@ -16,6 +16,7 @@ const PUBLIC_PREFIXES = [
   "/robots.txt",
   "/favicon.ico",
   "/icon.svg",
+  "/api/engineering/internal-notification",
 ];
 
 export function middleware(req: NextRequest) {

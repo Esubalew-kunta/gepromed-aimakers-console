@@ -17,6 +17,7 @@ import {
 } from "@/lib/pipeline/core";
 import { getStageEmail, fillEmail } from "@/lib/pipeline/engineering-emails";
 import { useT, useLang } from "@/lib/i18n";
+import { resolveEngineeringRoute } from "@/lib/pipeline/engineering-routing";
 import {
   advanceEngStage,
   skipEngStage,
@@ -68,6 +69,16 @@ export function EngineeringDrawer({
   const stageIds = stageIdsFor(def, variantKey);
   const currentIdx = stageIds.indexOf(r.stage);
   const metaEntries = Object.entries(r.meta ?? {});
+
+  const equipmentKey =
+  typeof r.meta?.item === "string"
+    ? r.meta.item
+    : null;
+
+  const internalRoute = resolveEngineeringRoute(
+    r.kind,
+    equipmentKey,
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -143,6 +154,90 @@ export function EngineeringDrawer({
             </div>
           ) : null}
         </Section>
+
+        {/* Client-approved internal email routing */}
+<Section
+  title={
+    lang === "fr"
+      ? "Routage interne"
+      : "Internal routing"
+  }
+>
+  {internalRoute.matched ? (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5">
+      <div className="flex items-start gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-100 text-sm text-emerald-700">
+          ✉
+        </span>
+
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            {lang === "fr"
+              ? "Destination confirmée"
+              : "Confirmed destination"}
+          </p>
+
+          <p className="mt-1 break-all text-sm font-semibold text-ink-900">
+            {internalRoute.recipient}
+          </p>
+
+          <p className="mt-1 text-xs text-ink-500">
+            {lang === "fr"
+              ? "Règle"
+              : "Rule"}{" "}
+            · {internalRoute.routeKey}
+          </p>
+        </div>
+      </div>
+
+      {internalRoute.equipmentName ? (
+        <div className="mt-3 border-t border-emerald-200 pt-3">
+          <p className="text-xs text-ink-500">
+            {lang === "fr"
+              ? "Équipement"
+              : "Equipment"}
+          </p>
+
+          <p className="mt-0.5 text-sm font-medium text-ink-800">
+            {internalRoute.equipmentName}
+          </p>
+
+          <p className="mt-0.5 font-mono text-[11px] text-ink-400">
+            {internalRoute.equipmentKey}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  ) : (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+      <p className="text-sm font-semibold text-amber-800">
+        {lang === "fr"
+          ? "Aucune destination configurée"
+          : "No destination configured"}
+      </p>
+
+      <p className="mt-1 text-xs leading-relaxed text-amber-700">
+        {internalRoute.reason === "missing_equipment"
+          ? lang === "fr"
+            ? "La demande ne contient pas d'identifiant d'équipement."
+            : "The request does not contain an equipment identifier."
+          : internalRoute.reason === "unknown_equipment"
+            ? lang === "fr"
+              ? `Équipement inconnu : ${internalRoute.equipmentKey}`
+              : `Unknown equipment: ${internalRoute.equipmentKey}`
+            : lang === "fr"
+              ? "Le type de demande est inconnu."
+              : "The request type is unknown."}
+      </p>
+
+      <p className="mt-2 text-xs font-medium text-amber-800">
+        {lang === "fr"
+          ? "Aucun e-mail ne sera envoyé automatiquement."
+          : "No email will be sent automatically."}
+      </p>
+    </div>
+  )}
+</Section>
 
         {/* Pipeline stepper */}
         <Section title={t("engineering.drawer.progress")}>

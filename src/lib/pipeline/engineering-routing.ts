@@ -1,17 +1,21 @@
 /**
  * Internal notification routing for Engineering requests.
  *
- * Client-approved rules:
+ * Client-approved rules (production target):
  * - Explant analysis → explant@gepromed.com
  * - Testing service → r-d@gepromed.com
  * - Imaging/microscopy equipment → explant@gepromed.com
  * - Mechanical-testing equipment → r-d@gepromed.com
  *
+ * TEMPORARY (pre-launch testing): both routes point at kunta@aimakers.fr so
+ * test submissions never reach the real Gepromed team inboxes. Revert to the
+ * addresses above once the project goes live.
+ *
  * Pure and client-safe: no database, environment, or network imports.
  */
 
-export const EXPLANT_EMAIL = "explant@gepromed.com";
-export const TESTING_EMAIL = "r-d@gepromed.com";
+export const EXPLANT_EMAIL = "kunta@aimakers.fr";
+export const TESTING_EMAIL = "kunta@aimakers.fr";
 
 export const EQUIPMENT_NAMES = {
   "keyence-vhx-7100": "Keyence VHX-7100",

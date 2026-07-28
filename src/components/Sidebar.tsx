@@ -11,6 +11,7 @@ const NAV: { href: string; labelKey: DictKey; icon: string }[] = [
   { href: "/trainees", labelKey: "nav.trainees", icon: "users" },
   { href: "/courses", labelKey: "nav.courses", icon: "book" },
   { href: "/engineering", labelKey: "nav.engineering", icon: "workflow" },
+  { href: "/contacts", labelKey: "nav.contacts", icon: "mail" },
   { href: "/contracts", labelKey: "nav.contracts", icon: "clipboard-check" },
   { href: "/skills", labelKey: "nav.skills", icon: "grid" },
   { href: "/automations", labelKey: "nav.automations", icon: "bolt" },

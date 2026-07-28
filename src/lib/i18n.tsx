@@ -74,6 +74,7 @@ const DICT = {
   "nav.roadmap": { fr: "Feuille de route", en: "Roadmap" },
   "nav.inputs": { fr: "Accès & paramètres", en: "Inputs & access" },
   "nav.training": { fr: "Espace formation", en: "Training hub" },
+  "nav.contacts": { fr: "Contacts", en: "Contacts" },
   "nav.feedback": { fr: "Retours", en: "Feedback" },
 
   "chrome.menu": { fr: "Menu", en: "Menu" },

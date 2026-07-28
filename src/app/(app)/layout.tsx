@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { getConsoleBadgeCounts } from "@/lib/badges";
 import { Sidebar } from "@/components/Sidebar";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +15,11 @@ export default async function AppLayout({
   if (!user) redirect("/login");
 
   const demoMode = !process.env.OPENAI_API_KEY && !process.env.LMS_API_URL;
+  const badges = await getConsoleBadgeCounts();
 
   return (
     <div className="lg:flex">
-      <Sidebar user={{ name: user.name, title: user.title }} />
+      <Sidebar user={{ name: user.name, title: user.title }} badges={badges} />
       <div className="min-w-0 flex-1">
         {demoMode ? (
           <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-center text-xs font-medium text-amber-800">

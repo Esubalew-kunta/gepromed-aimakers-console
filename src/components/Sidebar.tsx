@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "./Icon";
 import { useT, useLang, type DictKey } from "@/lib/i18n";
+import type { ConsoleBadges } from "@/lib/badges";
 
-const NAV: { href: string; labelKey: DictKey; icon: string }[] = [
+const NAV: { href: string; labelKey: DictKey; icon: string; badgeKey?: keyof ConsoleBadges }[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: "home" },
-  { href: "/trainees", labelKey: "nav.trainees", icon: "users" },
+  { href: "/trainees", labelKey: "nav.trainees", icon: "users", badgeKey: "trainees" },
   { href: "/courses", labelKey: "nav.courses", icon: "book" },
-  { href: "/engineering", labelKey: "nav.engineering", icon: "workflow" },
-  { href: "/contacts", labelKey: "nav.contacts", icon: "mail" },
+  { href: "/engineering", labelKey: "nav.engineering", icon: "workflow", badgeKey: "engineering" },
+  { href: "/contacts", labelKey: "nav.contacts", icon: "mail", badgeKey: "contacts" },
   { href: "/contracts", labelKey: "nav.contracts", icon: "clipboard-check" },
   { href: "/skills", labelKey: "nav.skills", icon: "grid" },
   { href: "/automations", labelKey: "nav.automations", icon: "bolt" },
@@ -23,10 +24,17 @@ const NAV: { href: string; labelKey: DictKey; icon: string }[] = [
   { href: "/feedback", labelKey: "nav.feedback", icon: "chat" },
 ];
 
-export function Sidebar({ user }: { user: { name: string; title: string } }) {
+export function Sidebar({
+  user,
+  badges,
+}: {
+  user: { name: string; title: string };
+  badges?: ConsoleBadges;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const t = useT();
+  const totalBadges = badges ? Object.values(badges).reduce((a, b) => a + b, 0) : 0;
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -42,11 +50,14 @@ export function Sidebar({ user }: { user: { name: string; title: string } }) {
           <span className="font-bold text-ink-900">Gepromed AI</span>
         </div>
         <button
-          className="btn-ghost px-3 py-1.5"
+          className="btn-ghost relative px-3 py-1.5"
           onClick={() => setOpen((v) => !v)}
           aria-label="Toggle navigation"
         >
           {t("chrome.menu")}
+          {totalBadges > 0 && (
+            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />
+          )}
         </button>
       </div>
 
@@ -73,6 +84,7 @@ export function Sidebar({ user }: { user: { name: string; title: string } }) {
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
           {NAV.map((item) => {
             const active = isActive(item.href);
+            const count = item.badgeKey ? badges?.[item.badgeKey] ?? 0 : 0;
             return (
               <Link
                 key={item.href}
@@ -88,7 +100,12 @@ export function Sidebar({ user }: { user: { name: string; title: string } }) {
                   name={item.icon}
                   className={`h-5 w-5 ${active ? "text-brand-600" : "text-ink-400"}`}
                 />
-                {t(item.labelKey)}
+                <span className="flex-1">{t(item.labelKey)}</span>
+                {count > 0 && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold text-white">
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
               </Link>
             );
           })}

@@ -14,9 +14,15 @@ export interface ContactMessage {
   message: string;
   status: "new" | "read" | "archived";
   replied_at: string | null;
-  last_reply: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ContactReply {
+  id: string;
+  contact_message_id: string;
+  body: string;
+  sent_at: string;
 }
 
 /** All contact messages, newest first (empty when Supabase absent). */

@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import type { ContactMessage } from "@/lib/contacts-data";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import type { ContactMessage, ContactReply } from "@/lib/contacts-data";
 import {
   markContactStatus,
   deleteContactMessage,
   sendContactReply,
-  clearContactReply,
+  clearContactReplies,
+  getContactReplies,
 } from "@/app/(app)/contacts/actions";
 import { Icon } from "./Icon";
 
@@ -58,6 +59,7 @@ export function ContactsList({ messages }: { messages: ContactMessage[] }) {
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [filter, setFilter] = useState<"all" | "new" | "archived">("all");
+  const [replyVersion, setReplyVersion] = useState(0);
 
   const counts = useMemo(
     () => ({
@@ -230,27 +232,21 @@ export function ContactsList({ messages }: { messages: ContactMessage[] }) {
                       {m.message}
                     </p>
 
-                    {m.replied_at && m.last_reply && (
-                      <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5">
-                        <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
-                          <Icon name="check" className="h-3.5 w-3.5" />
-                          Your reply · {formatDate(m.replied_at)}
-                        </p>
-                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink-700">
-                          {m.last_reply}
-                        </p>
-                        <button
-                          disabled={pending}
-                          onClick={() => startTransition(() => clearContactReply(m.id))}
-                          className="mt-2 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50"
-                        >
-                          Clear reply
-                        </button>
-                      </div>
+                    {open && m.replied_at && (
+                      <RepliesThread
+                        messageId={m.id}
+                        refreshToken={replyVersion}
+                        pending={pending}
+                        startTransition={startTransition}
+                      />
                     )}
 
                     {replyingId === m.id && (
-                      <ReplyComposer message={m} onClose={() => setReplyingId(null)} />
+                      <ReplyComposer
+                        message={m}
+                        onClose={() => setReplyingId(null)}
+                        onSent={() => setReplyVersion((v) => v + 1)}
+                      />
                     )}
 
                     <div className="mt-3 flex gap-2">
@@ -325,9 +321,11 @@ function StatChip({
 function ReplyComposer({
   message: m,
   onClose,
+  onSent,
 }: {
   message: ContactMessage;
   onClose: () => void;
+  onSent: () => void;
 }) {
   const [subject, setSubject] = useState(`Re: ${m.subject || "your message to Gepromed"}`);
   const [body, setBody] = useState("");
@@ -356,6 +354,7 @@ function ReplyComposer({
         body,
       });
       setSendState(res.ok ? "sent" : res.reason === "not_configured" ? "not_configured" : "failed");
+      if (res.ok) onSent();
     });
 
   return (
@@ -410,6 +409,67 @@ function ReplyComposer({
           Direct sending isn&apos;t set up yet — use Copy or Open in mail for now.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Full reply history for a message. Fetches on mount/refresh (the list page
+ * doesn't preload replies) and offers "Clear all replies" to wipe the thread
+ * and undo the "Replied" indicator — safe since nothing else depends on it.
+ */
+function RepliesThread({
+  messageId,
+  refreshToken,
+  pending,
+  startTransition,
+}: {
+  messageId: string;
+  refreshToken: number;
+  pending: boolean;
+  startTransition: (fn: () => void | Promise<void>) => void;
+}) {
+  const [replies, setReplies] = useState<ContactReply[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getContactReplies(messageId).then((r) => {
+      if (active) setReplies(r);
+    });
+    return () => {
+      active = false;
+    };
+  }, [messageId, refreshToken]);
+
+  if (replies === null) {
+    return <p className="mt-3 text-xs text-ink-400">Loading replies…</p>;
+  }
+  if (replies.length === 0) return null;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {replies.map((r) => (
+        <div key={r.id} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+            <Icon name="check" className="h-3.5 w-3.5" />
+            Your reply · {formatDate(r.sent_at)}
+          </p>
+          <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink-700">
+            {r.body}
+          </p>
+        </div>
+      ))}
+      <button
+        disabled={pending}
+        onClick={() => {
+          if (confirm("Clear all replies for this message?")) {
+            startTransition(() => clearContactReplies(messageId));
+          }
+        }}
+        className="text-xs font-medium text-ink-400 hover:text-red-600 disabled:opacity-50"
+      >
+        Clear all replies
+      </button>
     </div>
   );
 }

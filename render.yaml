@@ -50,3 +50,8 @@ services:
         sync: false
       - key: EXPENSE_SHEET_CLEAR_URL
         sync: false
+      # Contacts tab "Send reply" button (n8n, invisible to staff). Without
+      # it, replies still work via Copy / Open in mail — Send just shows a
+      # "not set up yet" note instead of actually sending.
+      - key: CONTACT_EMAIL_WEBHOOK_URL
+        sync: false

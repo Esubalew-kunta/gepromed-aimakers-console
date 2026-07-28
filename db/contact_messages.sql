@@ -15,9 +15,14 @@ create table if not exists contact_messages (
   subject    text default '',
   message    text not null,
   status     text not null default 'new' check (status in ('new', 'read', 'archived')),
+  replied_at timestamptz,       -- set when staff sends a reply from the console
+  last_reply text,              -- body of the most recent reply, for the "Replied" panel
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table contact_messages add column if not exists replied_at timestamptz;
+alter table contact_messages add column if not exists last_reply text;
 
 create index if not exists contact_messages_status_idx on contact_messages (status, created_at desc);
 

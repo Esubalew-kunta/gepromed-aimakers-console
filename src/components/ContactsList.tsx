@@ -6,6 +6,7 @@ import {
   markContactStatus,
   deleteContactMessage,
   sendContactReply,
+  clearContactReply,
 } from "@/app/(app)/contacts/actions";
 import { Icon } from "./Icon";
 
@@ -168,6 +169,12 @@ export function ContactsList({ messages }: { messages: ContactMessage[] }) {
                       <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[m.status]}`} />
                       {m.status}
                     </span>
+                    {m.replied_at && (
+                      <span className="badge shrink-0 bg-emerald-50 text-emerald-700">
+                        <Icon name="check" className="h-3 w-3" />
+                        Replied
+                      </span>
+                    )}
                   </div>
                   <p className={`truncate text-sm ${unread ? "text-ink-700" : "text-ink-400"}`}>
                     {m.subject ? (
@@ -216,12 +223,31 @@ export function ContactsList({ messages }: { messages: ContactMessage[] }) {
                         className="btn-primary shrink-0 px-3.5 py-1.5 text-xs shadow-sm shadow-brand-600/20 transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-brand-600/30"
                       >
                         <Icon name="reply" className="h-3.5 w-3.5" />
-                        Reply
+                        {m.replied_at ? "Reply again" : "Reply"}
                       </button>
                     </div>
                     <p className="mt-3 whitespace-pre-wrap rounded-xl border border-ink-100 bg-white p-3.5 text-sm leading-relaxed text-ink-700 shadow-sm">
                       {m.message}
                     </p>
+
+                    {m.replied_at && m.last_reply && (
+                      <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                          <Icon name="check" className="h-3.5 w-3.5" />
+                          Your reply · {formatDate(m.replied_at)}
+                        </p>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink-700">
+                          {m.last_reply}
+                        </p>
+                        <button
+                          disabled={pending}
+                          onClick={() => startTransition(() => clearContactReply(m.id))}
+                          className="mt-2 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50"
+                        >
+                          Clear reply
+                        </button>
+                      </div>
+                    )}
 
                     {replyingId === m.id && (
                       <ReplyComposer message={m} onClose={() => setReplyingId(null)} />
@@ -293,8 +319,8 @@ function StatChip({
 /**
  * Inline reply composer: subject/body prefilled from the original message,
  * editable, with three ways to send — Copy to clipboard, Open in the staff
- * member's own mail client, or Send via the n8n webhook (the real "Send"
- * button; inert with a note until CONTACT_EMAIL_WEBHOOK_URL is configured).
+ * member's own mail client, or Send directly (backed by an email-sending
+ * webhook; inert with a note until CONTACT_EMAIL_WEBHOOK_URL is configured).
  */
 function ReplyComposer({
   message: m,
@@ -372,7 +398,7 @@ function ReplyComposer({
           disabled={sending || !body.trim()}
           className="btn-primary !py-1.5 !text-xs disabled:opacity-50"
         >
-          {sending ? "Sending…" : "Send via n8n"}
+          {sending ? "Sending…" : "Send reply"}
         </button>
       </div>
       {sendState === "sent" ? (
@@ -381,7 +407,7 @@ function ReplyComposer({
         <p className="text-xs font-medium text-red-600">Send failed. Try again or open in mail.</p>
       ) : sendState === "not_configured" ? (
         <p className="text-xs text-amber-600">
-          n8n sending isn&apos;t configured yet — use Copy or Open in mail for now.
+          Direct sending isn&apos;t set up yet — use Copy or Open in mail for now.
         </p>
       ) : null}
     </div>

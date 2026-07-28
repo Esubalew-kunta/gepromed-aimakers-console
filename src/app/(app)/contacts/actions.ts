@@ -20,11 +20,23 @@ export async function deleteContactMessage(id: string) {
   revalidatePath("/contacts");
 }
 
+/** Clear the recorded reply (undoes the "Replied" indicator). */
+export async function clearContactReply(id: string) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  await sb
+    .from("contact_messages")
+    .update({ replied_at: null, last_reply: null })
+    .eq("id", id);
+  revalidatePath("/contacts");
+}
+
 /**
- * Send a reply to a contact message via the n8n webhook (mirrors the
- * engineering "Send via n8n" button). Env-gated by `CONTACT_EMAIL_WEBHOOK_URL`,
- * authed with `N8N_WEBHOOK_SECRET`, never throws. Marks the message read on
- * success so it drops out of the "new" filter.
+ * Send a reply to a contact message via the email-sending webhook (currently
+ * backed by n8n, invisible to staff). Env-gated by `CONTACT_EMAIL_WEBHOOK_URL`,
+ * authed with `N8N_WEBHOOK_SECRET`, never throws. On success, marks the
+ * message read and records the reply (timestamp + body) for the "Replied"
+ * indicator in the list.
  */
 export async function sendContactReply(input: {
   messageId: string;
@@ -53,7 +65,10 @@ export async function sendContactReply(input: {
     if (!res.ok) return { ok: false, reason: `http_${res.status}` };
     const sb = supabaseServer();
     if (sb) {
-      await sb.from("contact_messages").update({ status: "read" }).eq("id", input.messageId);
+      await sb
+        .from("contact_messages")
+        .update({ status: "read", replied_at: new Date().toISOString(), last_reply: input.body })
+        .eq("id", input.messageId);
     }
     revalidatePath("/contacts");
     return { ok: true };

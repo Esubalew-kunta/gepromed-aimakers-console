@@ -13,6 +13,8 @@ export interface ContactMessage {
   subject: string;
   message: string;
   status: "new" | "read" | "archived";
+  replied_at: string | null;
+  last_reply: string | null;
   created_at: string;
   updated_at: string;
 }

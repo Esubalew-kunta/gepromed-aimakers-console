@@ -2,50 +2,58 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { FileExtractionSchema, type FileExtraction, type DepositContext } from "./types";
+import { getAiProviderSettings } from "./ai-settings";
 
 /**
- * Receipt extraction via a vision LLM. Provider is chosen from the environment:
- * by default Anthropic (Claude) when ANTHROPIC_API_KEY is set, else OpenAI
- * (GPT-4o family) when OPENAI_API_KEY is set. Set EXTRACTION_PROVIDER=openai to
- * force OpenAI (or =anthropic to force Claude). Both read PDFs and images
- * natively (multilingual OCR + layout), return ONE object per distinct receipt
- * in a file, and MUST NOT invent: missing/unclear => null + low confidence + alert.
+ * Receipt extraction via a vision LLM. Keys/models come from ai-settings.ts —
+ * a DB override (settable from the Expenses page, admin-only) on top of the
+ * .env values, re-read on every call so a key rotated in the UI takes effect
+ * immediately. Provider choice: EXTRACTION_PROVIDER env (if its key is
+ * present) wins; otherwise prefer Anthropic (Claude) when its key is set,
+ * else OpenAI; else nothing. Both read PDFs and images natively (multilingual
+ * OCR + layout), return ONE object per distinct receipt in a file, and MUST
+ * NOT invent: missing/unclear => null + low confidence + alert.
  */
 
-const openaiKey = process.env.OPENAI_API_KEY;
-const openaiModel = process.env.OPENAI_MODEL || "gpt-4o";
-const anthropicKey = process.env.ANTHROPIC_API_KEY;
-const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+interface ResolvedProvider {
+  kind: "openai" | "anthropic" | null;
+  openaiKey: string | null;
+  openaiModel: string;
+  anthropicKey: string | null;
+  anthropicModel: string;
+}
 
-/**
- * EXTRACTION_PROVIDER (if set and its key is present) wins; otherwise prefer
- * Anthropic (Claude) when its key is set, else OpenAI; else nothing.
- */
-const preferred = (process.env.EXTRACTION_PROVIDER || "").toLowerCase();
-const provider: "openai" | "anthropic" | null =
-  preferred === "openai" && openaiKey
-    ? "openai"
-    : preferred === "anthropic" && anthropicKey
-      ? "anthropic"
-      : anthropicKey
+async function resolveProvider(): Promise<ResolvedProvider> {
+  const settings = await getAiProviderSettings();
+  const openaiKey = settings.openaiApiKey;
+  const openaiModel = settings.openaiModel || "gpt-4o";
+  const anthropicKey = settings.anthropicApiKey;
+  const anthropicModel = settings.anthropicModel || "claude-opus-4-8";
+
+  const preferred = (process.env.EXTRACTION_PROVIDER || "").toLowerCase();
+  const kind: "openai" | "anthropic" | null =
+    preferred === "openai" && openaiKey
+      ? "openai"
+      : preferred === "anthropic" && anthropicKey
         ? "anthropic"
-        : openaiKey
-          ? "openai"
-          : null;
+        : anthropicKey
+          ? "anthropic"
+          : openaiKey
+            ? "openai"
+            : null;
 
-export function isExtractionConfigured(): boolean {
-  return provider !== null;
+  return { kind, openaiKey, openaiModel, anthropicKey, anthropicModel };
 }
 
-let _openai: OpenAI | null = null;
-function openai(): OpenAI {
-  if (!_openai) _openai = new OpenAI({ apiKey: openaiKey });
-  return _openai;
+export async function isExtractionConfigured(): Promise<boolean> {
+  return (await resolveProvider()).kind !== null;
 }
-let _anthropic: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (!_anthropic) _anthropic = new Anthropic({ apiKey: anthropicKey });
-  return _anthropic;
+
+function openaiClient(apiKey: string): OpenAI {
+  return new OpenAI({ apiKey });
+}
+function anthropicClient(apiKey: string): Anthropic {
+  return new Anthropic({ apiKey });
 }
 
 export interface UploadedFile {
@@ -133,13 +141,33 @@ function contextLine(deposit: DepositContext): string {
   );
 }
 
-/** Extract every receipt from one uploaded file (provider auto-selected). */
+/**
+ * Extract every receipt from one uploaded file (provider auto-selected). If
+ * the preferred provider's call throws (e.g. an account out of API credits —
+ * a billing failure, not a bad document), automatically retries with the
+ * other provider when one is configured, instead of skipping the file.
+ */
 export async function extractFile(
   file: UploadedFile,
   deposit: DepositContext,
 ): Promise<FileExtraction> {
-  if (provider === "openai") return extractWithOpenAI(file, deposit);
-  if (provider === "anthropic") return extractWithAnthropic(file, deposit);
+  const p = await resolveProvider();
+  if (p.kind === "openai" && p.openaiKey) {
+    try {
+      return await extractWithOpenAI(file, deposit, p.openaiKey, p.openaiModel);
+    } catch (e) {
+      if (!p.anthropicKey) throw e;
+      return extractWithAnthropic(file, deposit, p.anthropicKey, p.anthropicModel);
+    }
+  }
+  if (p.kind === "anthropic" && p.anthropicKey) {
+    try {
+      return await extractWithAnthropic(file, deposit, p.anthropicKey, p.anthropicModel);
+    } catch (e) {
+      if (!p.openaiKey) throw e;
+      return extractWithOpenAI(file, deposit, p.openaiKey, p.openaiModel);
+    }
+  }
   return { isReceipt: false, reasonIfNot: "Aucun fournisseur IA configuré.", receipts: [] };
 }
 
@@ -157,7 +185,12 @@ function parseOrFail(raw: unknown): FileExtraction {
 
 // ---- OpenAI (GPT-4o family) ------------------------------------------------
 
-async function extractWithOpenAI(file: UploadedFile, deposit: DepositContext): Promise<FileExtraction> {
+async function extractWithOpenAI(
+  file: UploadedFile,
+  deposit: DepositContext,
+  apiKey: string,
+  model: string,
+): Promise<FileExtraction> {
   const docPart = isPdf(file.mediaType)
     ? {
         type: "file" as const,
@@ -168,8 +201,8 @@ async function extractWithOpenAI(file: UploadedFile, deposit: DepositContext): P
         image_url: { url: `data:${file.mediaType};base64,${file.base64}` },
       };
 
-  const res = await openai().chat.completions.create({
-    model: openaiModel,
+  const res = await openaiClient(apiKey).chat.completions.create({
+    model,
     max_tokens: 4000,
     messages: [
       { role: "system", content: SYSTEM },
@@ -209,8 +242,13 @@ async function extractWithOpenAI(file: UploadedFile, deposit: DepositContext): P
 
 // ---- Anthropic (Claude) — fallback ----------------------------------------
 
-async function extractWithAnthropic(file: UploadedFile, deposit: DepositContext): Promise<FileExtraction> {
-  const c = anthropic();
+async function extractWithAnthropic(
+  file: UploadedFile,
+  deposit: DepositContext,
+  apiKey: string,
+  model: string,
+): Promise<FileExtraction> {
+  const c = anthropicClient(apiKey);
   const docBlock: Anthropic.ContentBlockParam = isPdf(file.mediaType)
     ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: file.base64 } }
     : {
@@ -223,7 +261,7 @@ async function extractWithAnthropic(file: UploadedFile, deposit: DepositContext)
       };
 
   const msg = await c.messages.create({
-    model: anthropicModel,
+    model,
     max_tokens: 4000,
     system: SYSTEM,
     tools: [

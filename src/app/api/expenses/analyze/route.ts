@@ -40,9 +40,9 @@ function mediaTypeOf(name: string, type: string): string {
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
-  if (!isExtractionConfigured()) {
+  if (!(await isExtractionConfigured())) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY non configurée, l'extraction IA est indisponible." },
+      { error: "Aucune clé IA configurée, l'extraction est indisponible." },
       { status: 503 },
     );
   }

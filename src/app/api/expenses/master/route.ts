@@ -14,7 +14,7 @@ export async function GET() {
   const info = await masterInfo(user.email);
   return NextResponse.json({
     savedMaster: info?.exists ?? false,
-    extractionReady: isExtractionConfigured(),
+    extractionReady: await isExtractionConfigured(),
     employeeName: user.name,
   });
 }

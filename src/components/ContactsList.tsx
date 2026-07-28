@@ -70,7 +70,11 @@ export function ContactsList({ messages }: { messages: ContactMessage[] }) {
     [messages],
   );
 
+  // Keep the currently-open message visible even if it no longer matches the
+  // active filter — e.g. opening a "New" message marks it read, which would
+  // otherwise make it vanish out from under the user while they're reading it.
   const visible = messages.filter((m) => {
+    if (m.id === openId) return true;
     if (filter === "all") return m.status !== "archived";
     if (filter === "new") return m.status === "new";
     return m.status === "archived";

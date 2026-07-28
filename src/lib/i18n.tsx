@@ -497,13 +497,13 @@ const DICT = {
   "engineering.drawer.emailCopy": { fr: "Copier", en: "Copy" },
   "engineering.drawer.emailCopied": { fr: "Copié ✓", en: "Copied ✓" },
   "engineering.drawer.emailOpen": { fr: "Ouvrir dans ma messagerie", en: "Open in my mail app" },
-  "engineering.drawer.emailSend": { fr: "Envoyer via n8n", en: "Send via n8n" },
+  "engineering.drawer.emailSend": { fr: "Envoyer", en: "Send reply" },
   "engineering.drawer.emailSending": { fr: "Envoi…", en: "Sending…" },
   "engineering.drawer.emailSent": { fr: "Envoyé ✓", en: "Sent ✓" },
   "engineering.drawer.emailFailed": { fr: "Échec de l'envoi", en: "Send failed" },
   "engineering.drawer.emailNotConfigured": {
-    fr: "Envoi n8n non configuré (ENG_EMAIL_WEBHOOK_URL + identifiant Gmail à ajouter).",
-    en: "n8n send not configured (add ENG_EMAIL_WEBHOOK_URL + a Gmail credential).",
+    fr: "Envoi direct non configuré — utilisez Copier ou Ouvrir dans ma messagerie pour l'instant.",
+    en: "Direct sending isn't set up yet — use Copy or Open in mail for now.",
   },
   "engineering.drawer.emailNone": {
     fr: "Aucun e-mail type pour cette étape.",

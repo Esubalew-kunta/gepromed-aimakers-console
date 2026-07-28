@@ -19,3 +19,45 @@ export async function deleteContactMessage(id: string) {
   await sb.from("contact_messages").delete().eq("id", id);
   revalidatePath("/contacts");
 }
+
+/**
+ * Send a reply to a contact message via the n8n webhook (mirrors the
+ * engineering "Send via n8n" button). Env-gated by `CONTACT_EMAIL_WEBHOOK_URL`,
+ * authed with `N8N_WEBHOOK_SECRET`, never throws. Marks the message read on
+ * success so it drops out of the "new" filter.
+ */
+export async function sendContactReply(input: {
+  messageId: string;
+  ref: string | null;
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ ok: boolean; reason?: "not_configured" | "unreachable" | string }> {
+  const url = process.env.CONTACT_EMAIL_WEBHOOK_URL;
+  if (!url) return { ok: false, reason: "not_configured" };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-webhook-secret": process.env.N8N_WEBHOOK_SECRET ?? "",
+      },
+      body: JSON.stringify({
+        messageId: input.messageId,
+        ref: input.ref,
+        to: input.to,
+        subject: input.subject,
+        body: input.body,
+      }),
+    });
+    if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+    const sb = supabaseServer();
+    if (sb) {
+      await sb.from("contact_messages").update({ status: "read" }).eq("id", input.messageId);
+    }
+    revalidatePath("/contacts");
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "unreachable" };
+  }
+}

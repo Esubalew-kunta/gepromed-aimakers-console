@@ -150,6 +150,43 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M21 20c0-2.5-1.8-4.3-4-4.8" />
     </>
   ),
+  archive: (
+    <>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M10 13h4" />
+    </>
+  ),
+  "archive-restore": (
+    <>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M12 17v-5" />
+      <path d="M9.5 14.5L12 12l2.5 2.5" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+      <path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </>
+  ),
+  "chevron-down": <path d="M6 9l6 6 6-6" />,
+  reply: (
+    <>
+      <path d="M9 17l-6-5 6-5" />
+      <path d="M3 12h11a5 5 0 0 1 5 5v2" />
+    </>
+  ),
+  inbox: (
+    <>
+      <path d="M4 12h4l2 3h4l2-3h4" />
+      <path d="M5.5 5h13l2.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6l2.5-7z" />
+    </>
+  ),
 };
 
 export function Icon({

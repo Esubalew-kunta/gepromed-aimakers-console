@@ -18,6 +18,7 @@ import {
 import { getStageEmail, fillEmail } from "@/lib/pipeline/engineering-emails";
 import { useT, useLang } from "@/lib/i18n";
 import { resolveEngineeringRoute } from "@/lib/pipeline/engineering-routing";
+import { Icon } from "./Icon";
 import {
   advanceEngStage,
   skipEngStage,
@@ -37,7 +38,9 @@ const fmtDate = (iso: string | null | undefined, lang: Lang) =>
         month: "short",
         year: "numeric",
       })
-    : "—";
+    : lang === "fr"
+      ? "non renseigné"
+      : "not set";
 
 /**
  * Engineering request detail + action drawer. Read detail (contact, notes,
@@ -48,12 +51,16 @@ export function EngineeringDrawer({
   r,
   def,
   run,
+  canDelete,
   onClose,
+  onRequestDelete,
 }: {
   r: EngineeringRequest;
   def: PipelineDef;
   run: (fn: () => Promise<unknown>) => void;
+  canDelete: boolean;
   onClose: () => void;
+  onRequestDelete: () => void;
 }) {
   const t = useT();
   const { lang } = useLang();
@@ -368,6 +375,18 @@ export function EngineeringDrawer({
             ) : null}
           </div>
         )}
+
+        {canDelete ? (
+          <div className="mt-3 border-t border-ink-100 pt-3">
+            <button
+              onClick={onRequestDelete}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+            >
+              <Icon name="trash" className="h-4 w-4" />
+              {lang === "fr" ? "Supprimer la demande" : "Delete request"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -450,6 +469,7 @@ function StageEmail({
         to: r.requester_email,
         subject,
         body,
+        lang,
       });
       setSendState(res.ok ? "sent" : res.reason === "not_configured" ? "not_configured" : "failed");
     });

@@ -39,8 +39,8 @@ export const ENGINEERING_EMAILS: Record<string, Record<string, EmailTemplate>> =
   explant: {
     prospection: {
       subject: {
-        fr: "Votre demande d'analyse d'explant — {ref}",
-        en: "Your explant analysis request — {ref}",
+        fr: "Votre demande d'analyse d'explant (réf. {ref})",
+        en: "Your explant analysis request (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
@@ -56,7 +56,7 @@ ${SIGN_EN}`,
       },
     },
     reception: {
-      subject: { fr: "Explant bien reçu — {ref}", en: "Explant received — {ref}" },
+      subject: { fr: "Explant bien reçu (réf. {ref})", en: "Explant received (ref. {ref})" },
       body: {
         fr: `Bonjour {name},
 
@@ -72,8 +72,8 @@ ${SIGN_EN}`,
     },
     first_report: {
       subject: {
-        fr: "Votre rapport d'analyse d'explant — {ref}",
-        en: "Your explant analysis report — {ref}",
+        fr: "Votre rapport d'analyse d'explant (réf. {ref})",
+        en: "Your explant analysis report (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
@@ -90,8 +90,8 @@ ${SIGN_EN}`,
     },
     follow_up: {
       subject: {
-        fr: "Votre avis sur notre service d'analyse d'explants — {ref}",
-        en: "Your feedback on our explant analysis service — {ref}",
+        fr: "Votre avis sur notre service d'analyse d'explants (réf. {ref})",
+        en: "Your feedback on our explant analysis service (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
@@ -111,8 +111,8 @@ ${SIGN_EN}`,
   test: {
     request: {
       subject: {
-        fr: "Nous avons bien reçu votre demande de test — {ref}",
-        en: "We received your test request — {ref}",
+        fr: "Nous avons bien reçu votre demande de test (réf. {ref})",
+        en: "We received your test request (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
@@ -128,7 +128,7 @@ ${SIGN_EN}`,
       },
     },
     report: {
-      subject: { fr: "Votre rapport de test — {ref}", en: "Your test report — {ref}" },
+      subject: { fr: "Votre rapport de test (réf. {ref})", en: "Your test report (ref. {ref})" },
       body: {
         fr: `Bonjour {name},
 
@@ -144,18 +144,18 @@ ${SIGN_EN}`,
     },
     done: {
       subject: {
-        fr: "Comment s'est passée votre expérience avec GEPROMED ? — {ref}",
-        en: "How was your experience with GEPROMED? — {ref}",
+        fr: "Comment s'est passée votre expérience avec GEPROMED ? (réf. {ref})",
+        en: "How was your experience with GEPROMED? (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
 
-Il y a deux semaines, nous vous remettions le rapport de test correspondant à la référence {ref}. Nous espérons qu'il a pleinement répondu à vos attentes. Votre retour nous aide à progresser — accepteriez-vous de nous faire part de votre avis ?
+Il y a deux semaines, nous vous remettions le rapport de test correspondant à la référence {ref}. Nous espérons qu'il a pleinement répondu à vos attentes. Votre retour nous aide à progresser : accepteriez-vous de nous faire part de votre avis ?
 
 ${SIGN_FR}`,
         en: `Dear {name},
 
-Two weeks ago we delivered the test report for reference {ref}. We hope it fully met your expectations. Your feedback helps us improve — would you take a moment to let us know how we did?
+Two weeks ago we delivered the test report for reference {ref}. We hope it fully met your expectations. Your feedback helps us improve. Would you take a moment to let us know how we did?
 
 ${SIGN_EN}`,
       },
@@ -165,8 +165,8 @@ ${SIGN_EN}`,
   equipment: {
     request: {
       subject: {
-        fr: "Votre demande de créneau machine — {ref}",
-        en: "Your machine slot request — {ref}",
+        fr: "Votre demande de créneau machine (réf. {ref})",
+        en: "Your machine slot request (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
@@ -183,8 +183,8 @@ ${SIGN_EN}`,
     },
     scheduled: {
       subject: {
-        fr: "Votre créneau machine est confirmé — {ref}",
-        en: "Your machine slot is confirmed — {ref}",
+        fr: "Votre créneau machine est confirmé (réf. {ref})",
+        en: "Your machine slot is confirmed (ref. {ref})",
       },
       body: {
         fr: `Bonjour {name},
@@ -224,4 +224,57 @@ export function fillEmail(
     subject: interpolate(tpl.subject[lang], vars),
     body: interpolate(tpl.body[lang], vars),
   };
+}
+
+const LOGO_URL =
+  "https://hdvqiiprylrrzrkydtpa.supabase.co/storage/v1/object/public/brand/logo-gepromed-color.png";
+
+/**
+ * Wraps a plain-text engineering email body in the same premium branded HTML
+ * shell used for trainee notifications (db/notification_render.sql's
+ * wrap_email_html — logo, accent bar, white card, refined footer), so both
+ * pipelines look like they come from the same company. Kept as a pure TS
+ * function (not SQL) since engineering templates live in this file, not the
+ * DB. The reference number is bolded in brand blue wherever it appears in
+ * the body, mirroring the training-title bolding added to trainee emails.
+ */
+export function wrapEngineeringEmailHtml(body: string, lang: Lang, ref?: string | null): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  let bodyHtml = esc(body)
+    .split(/\n\s*\n/)
+    .filter((p) => p.trim() !== "")
+    .map((p) => `<p style="margin:0 0 15px;">${p.trim().replace(/\n/g, "<br>")}</p>`)
+    .join("");
+
+  if (ref) {
+    const refEsc = esc(ref);
+    bodyHtml = bodyHtml.split(refEsc).join(`<strong style="color:#1a4fb8;">${refEsc}</strong>`);
+  }
+
+  const tagline = lang === "fr" ? "Ingénierie &amp; Essais" : "Engineering &amp; Testing";
+  const footerNote =
+    lang === "fr"
+      ? "Vous recevez cet e-mail suite à votre demande auprès de Gepromed."
+      : "You are receiving this email following your request to Gepromed.";
+
+  return (
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:32px 0;font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;">' +
+    '<tr><td align="center">' +
+    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e7ee;border-radius:16px;overflow:hidden;">' +
+    '<tr><td style="height:4px;line-height:4px;font-size:0;background:#1a4fb8;">&nbsp;</td></tr>' +
+    '<tr><td style="padding:32px 32px 22px;">' +
+    `<img src="${LOGO_URL}" alt="Gepromed" height="38" style="height:38px;display:block;border:0;">` +
+    `<div style="margin-top:12px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8891a3;">${tagline}</div>` +
+    "</td></tr>" +
+    '<tr><td style="padding:0 32px;"><div style="border-top:1px solid #eceef2;"></div></td></tr>' +
+    `<tr><td style="padding:28px 32px 32px;color:#232837;font-size:15.5px;line-height:1.7;">${bodyHtml}</td></tr>` +
+    '<tr><td style="padding:22px 32px;background:#fafbfc;border-top:1px solid #eceef2;">' +
+    '<div style="font-size:12.5px;font-weight:700;color:#3a4152;">Gepromed</div>' +
+    '<div style="margin-top:3px;font-size:11.5px;color:#9aa2b1;line-height:1.6;">4 rue Kirschleger, 67000 Strasbourg, France<br>' +
+    "www.gepromed.com &middot; +33 (0)3 88 00 00 00</div>" +
+    `<div style="margin-top:10px;font-size:10.5px;color:#c1c6d0;">${footerNote}</div>` +
+    "</td></tr>" +
+    "</table></td></tr></table>"
+  );
 }

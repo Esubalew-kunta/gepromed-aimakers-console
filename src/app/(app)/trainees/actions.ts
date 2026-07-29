@@ -66,7 +66,7 @@ export async function advanceStage(
   // HelpMeSee e-learning hard gate.
   const { data: row } = await sb
     .from("leads")
-    .select("attended, caution_waived, elearning_completed")
+    .select("attended, caution_waived, elearning_completed, funding")
     .eq("id", leadId)
     .single();
 
@@ -82,6 +82,30 @@ export async function advanceStage(
       reason: "elearning_not_verified",
     });
     return { error: "Vérifiez d'abord les modules e-learning (accès simulateur bloqué)." };
+  }
+
+  // HARD GATE (Bootcamp): pré-inscription only advances to deposit_contract
+  // once the signed contract has actually been uploaded (uploadDocument does
+  // that transition itself), unless the deposit was explicitly waived or the
+  // seat is sponsored. Blocks the checklist/advance button from skipping the
+  // document requirement — mirrors the e-learning gate above.
+  if (
+    parcours === "bootcamp" &&
+    current === "pre_registration" &&
+    !row?.caution_waived &&
+    row?.funding !== "sponsored"
+  ) {
+    const { count } = await sb
+      .from("documents")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", leadId);
+    if (!count) {
+      await logEvent(leadId, "gate:blocked", {
+        stage: current,
+        reason: "signed_contract_not_received",
+      });
+      return { error: "Le contrat signé n'a pas encore été reçu (caution/contrat requis)." };
+    }
   }
 
   const next = resolveAdvance(parcours, current, {

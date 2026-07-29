@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   type Lead,
   type Parcours,
@@ -11,10 +12,12 @@ import {
   stageLabel,
   stageTone,
 } from "@/lib/leads-shared";
+import { deleteLead } from "@/app/(app)/trainees/actions";
 import { useT } from "@/lib/i18n";
 import { TraineeSummaryDrawer } from "./TraineeSummaryDrawer";
 import { TraineeStatsChart } from "./TraineeStatsChart";
 import { Icon } from "./Icon";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const fmtDay = (iso?: string | null) =>
   iso
@@ -36,11 +39,16 @@ const FILTER_SELECT =
  */
 export function TraineeSummaryTable({
   leads,
+  canDelete = false,
   onVisibleChange,
   initialCourseFilter,
   publicBase = null,
 }: {
   leads: Lead[];
+  /** Admin + manager, mirrors LeadBoard — this view is read-only otherwise,
+   * delete is the one exception (per client request, so staff don't have to
+   * switch tabs to remove a record they're already looking at here). */
+  canDelete?: boolean;
   /** Reports the currently filtered/visible leads upward, so a parent can
    * keep KPI stats in sync with whatever this table is showing right now. */
   onVisibleChange?: (visible: Lead[]) => void;
@@ -52,6 +60,14 @@ export function TraineeSummaryTable({
   publicBase?: string | null;
 }) {
   const t = useT();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
+  const run = (fn: () => Promise<unknown>) =>
+    startTransition(async () => {
+      await fn();
+      router.refresh();
+    });
   const [q, setQ] = useState("");
   const [fParcours, setFParcours] = useState<Parcours | "all">("all");
   const [fCourse, setFCourse] = useState(initialCourseFilter ?? "");
@@ -249,59 +265,90 @@ export function TraineeSummaryTable({
       </div>
 
       {/* Table */}
-      <div className="card overflow-x-auto p-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-ink-100 text-left text-xs font-bold uppercase tracking-wide text-ink-400">
-              <th className="px-5 py-3">{t("traineeSummary.colTrainee")}</th>
-              <th className="px-5 py-3">{t("traineeSummary.colCourse")}</th>
-              <th className="px-5 py-3">{t("traineeSummary.colStatus")}</th>
-              <th className="px-5 py-3">{t("traineeSummary.colSponsor")}</th>
-              <th className="px-5 py-3">{t("traineeSummary.colRegistered")}</th>
-              <th className="px-5 py-3">{t("traineeSummary.colStart")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-ink-400">
-                  {t("traineeSummary.empty")}
-                </td>
+      <div
+        className={`card overflow-hidden p-0 transition-opacity ${pending ? "opacity-60" : ""}`}
+      >
+        <div className="flex items-center justify-between border-b border-ink-100 px-5 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">
+            {visible.length} {t("traineeSummary.colTrainee").toLowerCase()}
+            {visible.length !== leads.length ? ` / ${leads.length}` : ""}
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-ink-100 bg-ink-50/60 text-left text-[11px] font-bold uppercase tracking-wide text-ink-400">
+                <th className="px-5 py-3">{t("traineeSummary.colTrainee")}</th>
+                <th className="px-5 py-3">{t("traineeSummary.colCourse")}</th>
+                <th className="px-5 py-3">{t("traineeSummary.colStatus")}</th>
+                <th className="px-5 py-3">{t("traineeSummary.colSponsor")}</th>
+                <th className="px-5 py-3">{t("traineeSummary.colRegistered")}</th>
+                <th className="px-5 py-3">{t("traineeSummary.colStart")}</th>
+                {canDelete ? <th className="w-10 px-5 py-3" /> : null}
               </tr>
-            ) : (
-              visible.map((l) => {
-                const parcours = normalizeParcours(l);
-                return (
-                  <tr
-                    key={l.id}
-                    onClick={() => setOpenId(l.id)}
-                    className="cursor-pointer border-b border-ink-50 transition hover:bg-ink-50"
-                  >
-                    <td className="px-5 py-3">
-                      <p className="font-medium text-ink-900">
-                        {l.first_name} {l.last_name}
-                      </p>
-                      <p className="text-xs text-ink-400">{l.email}</p>
-                    </td>
-                    <td className="px-5 py-3 text-ink-700">
-                      {l.trainings?.title.fr ?? l.training_title_snapshot ?? "—"}
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`badge ${stageTone(parcours, l.stage)}`}>
-                        {stageLabel(parcours, l.stage)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-ink-700">
-                      {l.funding === "sponsored" ? (l.sponsor_name ?? t("traineeSummary.fundingSponsored")) : t("traineeSummary.fundingSelf")}
-                    </td>
-                    <td className="px-5 py-3 text-ink-700">{fmtDay(l.created_at)}</td>
-                    <td className="px-5 py-3 text-ink-700">{fmtDay(l.trainings?.start_date)}</td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {visible.length === 0 ? (
+                <tr>
+                  <td colSpan={canDelete ? 7 : 6} className="px-5 py-12 text-center text-ink-400">
+                    {t("traineeSummary.empty")}
+                  </td>
+                </tr>
+              ) : (
+                visible.map((l, i) => {
+                  const parcours = normalizeParcours(l);
+                  return (
+                    <tr
+                      key={l.id}
+                      onClick={() => setOpenId(l.id)}
+                      className={`group cursor-pointer border-b border-ink-50 transition-colors last:border-b-0 hover:bg-brand-50/30 ${
+                        i % 2 === 1 ? "bg-ink-50/30" : ""
+                      }`}
+                    >
+                      <td className="px-5 py-3.5">
+                        <p className="font-semibold text-ink-900">
+                          {l.first_name} {l.last_name}
+                        </p>
+                        <p className="text-xs text-ink-400">{l.email}</p>
+                      </td>
+                      <td className="px-5 py-3.5 text-ink-700">
+                        {l.trainings?.title.fr ?? l.training_title_snapshot ?? "—"}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`badge ${stageTone(parcours, l.stage)}`}>
+                          {stageLabel(parcours, l.stage)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-ink-700">
+                        {l.funding === "sponsored"
+                          ? (l.sponsor_name ?? t("traineeSummary.fundingSponsored"))
+                          : t("traineeSummary.fundingSelf")}
+                      </td>
+                      <td className="px-5 py-3.5 text-ink-500">{fmtDay(l.created_at)}</td>
+                      <td className="px-5 py-3.5 text-ink-500">{fmtDay(l.trainings?.start_date)}</td>
+                      {canDelete ? (
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(l);
+                            }}
+                            className="rounded-lg p-1.5 text-ink-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 focus-visible:opacity-100"
+                            title={t("pipeline.drawer.deleteTrainee")}
+                            aria-label={t("pipeline.drawer.deleteTrainee")}
+                          >
+                            <Icon name="trash" className="h-4 w-4" />
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Scrim + read-only detail drawer */}
@@ -328,6 +375,26 @@ export function TraineeSummaryTable({
           />
         ) : null}
       </aside>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={t("pipeline.drawer.deleteTrainee")}
+        message={
+          deleteTarget
+            ? t("pipeline.drawer.deleteTraineeConfirm", {
+                name: `${deleteTarget.first_name} ${deleteTarget.last_name}`,
+              })
+            : ""
+        }
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) run(() => deleteLead(deleteTarget.id));
+          setOpenId(null);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

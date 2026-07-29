@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   type Lead,
   type Stage,
@@ -299,12 +300,16 @@ const STAGE_HELP: Record<Parcours, Partial<Record<Stage, Record<Lang, StepHelp>>
 export function LeadBoard({
   leads,
   isAdmin = false,
+  canDelete = false,
   templates = [],
   publicBase = null,
   onVisibleChange,
 }: {
   leads: Lead[];
   isAdmin?: boolean;
+  /** Separate from isAdmin: admin + manager per the client's call, so this
+   * doesn't also widen the cancel/reinstate-registration gate above. */
+  canDelete?: boolean;
   templates?: ContractTemplate[];
   publicBase?: string | null;
   /** Reports the currently filtered/visible leads upward, so a parent can
@@ -327,6 +332,7 @@ export function LeadBoard({
   const [showFilters, setShowFilters] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
 
   const activeFilters =
     [fSession, fInterest, fReminders, fAccommodation, fElearning, fDocStatus].filter(
@@ -628,10 +634,15 @@ export function LeadBoard({
           <p className="p-10 text-center text-ink-400">{t("pipeline.emptyFiltered")}</p>
         ) : (
           visible.map((l, i) => (
-            <button
+            <div
               key={l.id}
+              role="button"
+              tabIndex={0}
               onClick={() => setOpenId(l.id)}
-              className={`grid w-full grid-cols-[1.4fr_auto] items-center gap-4 px-4 py-3 text-left transition hover:bg-ink-50 sm:grid-cols-[1.4fr_1.3fr_auto] ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setOpenId(l.id);
+              }}
+              className={`group grid w-full cursor-pointer grid-cols-[1.4fr_auto] items-center gap-4 px-4 py-3 text-left transition hover:bg-ink-50 sm:grid-cols-[1.4fr_1.3fr_auto] ${
                 i > 0 ? "border-t border-ink-100" : ""
               }`}
             >
@@ -682,6 +693,20 @@ export function LeadBoard({
                 <span className="font-mono text-[11px] text-ink-400">
                   {l.ref ?? l.id.slice(0, 8)}
                 </span>
+                {canDelete ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget(l);
+                    }}
+                    className="rounded-lg p-1 text-ink-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 focus-visible:opacity-100"
+                    title={t("pipeline.drawer.deleteTrainee")}
+                    aria-label={t("pipeline.drawer.deleteTrainee")}
+                  >
+                    <Icon name="trash" className="h-4 w-4" />
+                  </button>
+                ) : null}
                 <svg
                   className="h-4 w-4 text-ink-300"
                   viewBox="0 0 24 24"
@@ -692,7 +717,7 @@ export function LeadBoard({
                   <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-            </button>
+            </div>
           ))
         )}
       </div>
@@ -717,15 +742,36 @@ export function LeadBoard({
             key={drawerLead.id}
             lead={drawerLead}
             isAdmin={isAdmin}
+            canDelete={canDelete}
             pending={pending}
             run={run}
             templates={templates}
             publicBase={publicBase}
             onClose={() => setOpenId(null)}
-            onDeleted={() => setOpenId(null)}
+            onRequestDelete={() => setDeleteTarget(drawerLead)}
           />
         ) : null}
       </aside>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={t("pipeline.drawer.deleteTrainee")}
+        message={
+          deleteTarget
+            ? t("pipeline.drawer.deleteTraineeConfirm", {
+                name: `${deleteTarget.first_name} ${deleteTarget.last_name}`,
+              })
+            : ""
+        }
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) run(() => deleteLead(deleteTarget.id));
+          setOpenId(null);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -733,21 +779,23 @@ export function LeadBoard({
 function LeadDrawer({
   lead,
   isAdmin,
+  canDelete,
   pending,
   run,
   templates,
   publicBase,
   onClose,
-  onDeleted,
+  onRequestDelete,
 }: {
   lead: Lead;
   isAdmin: boolean;
+  canDelete: boolean;
   pending: boolean;
   run: (fn: () => Promise<unknown>) => void;
   templates: ContractTemplate[];
   publicBase: string | null;
   onClose: () => void;
-  onDeleted: () => void;
+  onRequestDelete: () => void;
 }) {
   const t = useT();
   const { lang } = useLang();
@@ -812,10 +860,17 @@ function LeadDrawer({
     setStepChecked(false);
     setContractApproved(false);
   }, [lead.id, lead.stage]);
+  // Bootcamp pré-inscription is a document gate, not a checklist: the signed
+  // contract upload (DocState, below) is what actually advances the stage,
+  // unless the deposit was explicitly waived or the training is sponsored —
+  // then there's no document to wait for, so a manual confirm applies.
+  const isDepositDocGate =
+    parcours === "bootcamp" && lead.stage === "pre_registration" && !isSponsored;
+  const hasSignedDocument = (lead.documents?.length ?? 0) > 0;
   const advanceEnabled = isElearningGate
     ? lead.elearning_completed
-    : parcours === "bootcamp" && lead.stage === "pre_registration"
-      ? stepChecked || lead.caution_waived
+    : isDepositDocGate
+      ? lead.caution_waived
       : stepChecked;
 
   // Eligibility step: auto-match the contract by course (a template whose
@@ -1031,8 +1086,19 @@ function LeadDrawer({
                 </div>
               ) : null}
 
-              {/* Confirmation checkbox for normal (non-gate) steps */}
-              {!isEligibilityGate && !isElearningGate && advance ? (
+              {/* Bootcamp pré-inscription: document gate, not a checklist. The
+                  signed-contract upload below (DocState) is what advances the
+                  stage; caution_waived is the only manual bypass. */}
+              {isDepositDocGate ? (
+                <p className="mt-3 text-[12px] text-ink-500">
+                  {lead.caution_waived
+                    ? t("pipeline.drawer.depositWaivedNote")
+                    : hasSignedDocument
+                      ? t("pipeline.drawer.depositDocReceivedNote")
+                      : t("pipeline.drawer.depositDocAwaitingNote")}
+                </p>
+              ) : !isEligibilityGate && !isElearningGate && advance ? (
+                /* Confirmation checkbox for normal (non-gate) steps */
                 <label className="mt-3 flex items-start gap-2 text-[13px] text-ink-700">
                   <input
                     type="checkbox"
@@ -1069,7 +1135,11 @@ function LeadDrawer({
                       {t("pipeline.drawer.eligibilityNotOk")}
                     </button>
                   </>
-                ) : advance ? (
+                ) : isDepositDocGate && !lead.caution_waived ? null : /* No manual
+                    advance here — uploading the signed document (below) is
+                    what confirms this step and moves the stage; the status
+                    note above already explains why. */
+                advance ? (
                   <button
                     onClick={() => run(() => advanceStage(lead.id, lead.stage, parcours))}
                     disabled={!advanceEnabled}
@@ -1423,19 +1493,14 @@ function LeadDrawer({
         <button onClick={sendNote} className="btn-primary !py-2 !text-sm">
           {t("pipeline.drawer.send")}
         </button>
-        {isAdmin ? (
+        {canDelete ? (
           <button
-            onClick={() => {
-              if (confirm(t("pipeline.drawer.deleteTraineeConfirm", { name: `${lead.first_name} ${lead.last_name}` }))) {
-                run(() => deleteLead(lead.id));
-                onDeleted();
-              }
-            }}
-            className="rounded-xl px-2.5 py-2 text-sm text-red-500 hover:bg-red-50"
-            title={t("pipeline.drawer.adminOnly")}
+            onClick={onRequestDelete}
+            className="rounded-xl p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+            title={t("pipeline.drawer.deleteTrainee")}
             aria-label={t("pipeline.drawer.deleteTrainee")}
           >
-            ✕
+            <Icon name="trash" className="h-4 w-4" />
           </button>
         ) : null}
       </div>

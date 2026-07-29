@@ -16,14 +16,45 @@ import {
 } from "@/lib/pipeline/core";
 import { useT, useLang } from "@/lib/i18n";
 import { PageHeader } from "@/components/PageHeader";
+import { Icon } from "./Icon";
+import { deleteEngRequest } from "@/app/(app)/engineering/actions";
 import { EngineeringDrawer } from "./EngineeringDrawer";
 import { EngineeringKpiRow, engStatus } from "./EngineeringKpiRow";
 import { EngineeringStatsChart } from "./EngineeringStatsChart";
+import { TableExportMenu } from "./TableExportMenu";
+import { ConfirmDialog } from "./ConfirmDialog";
+import type { ExportColumn } from "@/lib/export-table";
 
 type Kind = "explant" | "test" | "equipment";
 const KIND_ORDER: Kind[] = ["explant", "test", "equipment"];
 
 type StatusFilter = "all" | "active" | "done" | "exited";
+
+const fmtDateISO = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString("fr-FR") : "";
+
+function buildExportColumns(def: PipelineDef, lang: Lang): ExportColumn<EngineeringRequest>[] {
+  return [
+    { label: "Réf.", value: (r) => r.ref ?? r.id.slice(0, 8) },
+    { label: "Type", value: (r) => loc(def.label, lang) },
+    {
+      label: "Cas",
+      value: (r) => (r.variant ? variantLabelOf(def, r.variant ?? def.defaultVariantKey, lang) : ""),
+    },
+    {
+      label: "Statut",
+      value: (r) => (r.exited_at ? (r.exit_reason ?? "Sorti") : stageLabelOf(def, r.variant ?? def.defaultVariantKey, r.stage, lang)),
+    },
+    { label: "Demandeur", value: (r) => r.requester_name },
+    { label: "E-mail", value: (r) => r.requester_email },
+    { label: "Institution", value: (r) => r.institution },
+    { label: "Type d'organisation", value: (r) => r.org_type },
+    { label: "Créneau souhaité", value: (r) => fmtDateISO(r.desired_date) },
+    { label: "Notes", value: (r) => r.notes },
+    { label: "Créée le", value: (r) => fmtDateISO(r.created_at) },
+    { label: "Mise à jour le", value: (r) => fmtDateISO(r.updated_at) },
+  ];
+}
 
 const FILTER_SELECT =
   "rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 focus:border-brand-400 focus:outline-none";
@@ -31,9 +62,11 @@ const FILTER_SELECT =
 export function EngineeringBoards({
   requests,
   configured,
+  canDelete,
 }: {
   requests: EngineeringRequest[];
   configured: boolean;
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const t = useT();
@@ -41,6 +74,7 @@ export function EngineeringBoards({
   const [pending, start] = useTransition();
   const [kind, setKind] = useState<Kind>("explant");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EngineeringRequest | null>(null);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -85,6 +119,7 @@ export function EngineeringBoards({
   const open = Boolean(selected);
   const filtersActive =
     Boolean(query || dateFrom || dateTo) || stageFilter !== "all" || statusFilter !== "all";
+  const exportColumns = useMemo(() => buildExportColumns(def, lang), [def, lang]);
 
   const setKindReset = (k: Kind) => {
     setKind(k);
@@ -130,13 +165,22 @@ export function EngineeringBoards({
 
       {/* Toolbar: search + filters */}
       <div className="mb-4 space-y-2">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("engineering.search")}
-          className="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm focus:border-brand-400 focus:outline-none"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("engineering.search")}
+            className="min-w-[220px] flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm focus:border-brand-400 focus:outline-none"
+          />
+          <TableExportMenu
+            rows={rows}
+            columns={exportColumns}
+            filenameBase={`gepromed-${kind}-requests`}
+            sheetName={loc(def.label, lang)}
+            labelFr="demande(s)"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={stageFilter}
@@ -191,7 +235,16 @@ export function EngineeringBoards({
           </p>
         ) : (
           rows.map((r) => (
-            <Row key={r.id} r={r} def={def} onOpen={() => setOpenId(r.id)} t={t} lang={lang} />
+            <Row
+              key={r.id}
+              r={r}
+              def={def}
+              onOpen={() => setOpenId(r.id)}
+              t={t}
+              lang={lang}
+              canDelete={canDelete}
+              onRequestDelete={() => setDeleteTarget(r)}
+            />
           ))
         )}
       </div>
@@ -217,10 +270,32 @@ export function EngineeringBoards({
             r={selected}
             def={ENGINEERING_PIPELINES[selected.kind]}
             run={run}
+            canDelete={canDelete}
             onClose={() => setOpenId(null)}
+            onRequestDelete={() => setDeleteTarget(selected)}
           />
         ) : null}
       </aside>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={lang === "fr" ? "Supprimer la demande" : "Delete request"}
+        message={
+          deleteTarget
+            ? lang === "fr"
+              ? `Supprimer définitivement la demande ${deleteTarget.ref ?? deleteTarget.id.slice(0, 8)} de ${deleteTarget.requester_name} ? Cette action est irréversible.`
+              : `Permanently delete request ${deleteTarget.ref ?? deleteTarget.id.slice(0, 8)} from ${deleteTarget.requester_name}? This cannot be undone.`
+            : ""
+        }
+        confirmLabel={lang === "fr" ? "Supprimer" : "Delete"}
+        cancelLabel={lang === "fr" ? "Annuler" : "Cancel"}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) run(() => deleteEngRequest(deleteTarget.id));
+          setOpenId(null);
+          setDeleteTarget(null);
+        }}
+      />
     </>
   );
 }
@@ -231,21 +306,30 @@ function Row({
   onOpen,
   t,
   lang,
+  canDelete,
+  onRequestDelete,
 }: {
   r: EngineeringRequest;
   def: PipelineDef;
   onOpen: () => void;
   t: ReturnType<typeof useT>;
   lang: Lang;
+  canDelete: boolean;
+  onRequestDelete: () => void;
 }) {
   const variantKey = r.variant ?? def.defaultVariantKey;
   const exited = Boolean(r.exited_at);
   const needsVariant = r.kind === "explant" && !r.variant && !exited;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
-      className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-ink-50"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onOpen();
+      }}
+      className="group flex w-full cursor-pointer items-center gap-3 px-5 py-4 text-left transition hover:bg-ink-50"
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -274,9 +358,23 @@ function Row({
           {r.desired_date ? ` · ${t("engineering.slotWanted")} ${r.desired_date}` : ""}
         </p>
       </div>
+      {canDelete ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRequestDelete();
+          }}
+          className="shrink-0 rounded-lg p-1.5 text-ink-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 focus-visible:opacity-100"
+          title={lang === "fr" ? "Supprimer la demande" : "Delete request"}
+          aria-label={lang === "fr" ? "Supprimer la demande" : "Delete request"}
+        >
+          <Icon name="trash" className="h-4 w-4" />
+        </button>
+      ) : null}
       <span className="shrink-0 text-xs font-medium text-brand-600">
         {t("engineering.viewDetail")} →
       </span>
-    </button>
+    </div>
   );
 }

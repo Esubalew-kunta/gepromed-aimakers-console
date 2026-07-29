@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabase";
 import { getSessionUser } from "@/lib/auth";
 import { ENGINEERING_PIPELINES } from "@/lib/pipeline/engineering";
-import { nextStageId, skipStageId } from "@/lib/pipeline/core";
+import { nextStageId, skipStageId, type Lang } from "@/lib/pipeline/core";
+import { wrapEngineeringEmailHtml } from "@/lib/pipeline/engineering-emails";
 
 export interface EngComment {
   id: string;
@@ -103,8 +104,11 @@ export async function getEngComments(id: string): Promise<EngComment[]> {
  * Send a stage email to the requester via the n8n webhook (the real "Send"
  * button). Mirrors the expense-mirror pattern: env-gated by `ENG_EMAIL_WEBHOOK_URL`,
  * authed with `N8N_WEBHOOK_SECRET`, never throws. Sends the staff-EDITED subject/
- * body so it's review-then-send, not blind auto-fire. Records a best-effort audit
- * comment on success. Returns a small status the drawer surfaces.
+ * body so it's review-then-send, not blind auto-fire. Also sends a `body_html`
+ * field — the same branded template (logo, accent bar, footer) used for
+ * trainee emails — so the n8n Gmail node can send styled HTML instead of
+ * plain text; `body` is kept as a plain-text fallback. Records a best-effort
+ * audit comment on success. Returns a small status the drawer surfaces.
  */
 export async function sendEngEmail(input: {
   requestId: string;
@@ -112,6 +116,7 @@ export async function sendEngEmail(input: {
   to: string;
   subject: string;
   body: string;
+  lang?: Lang;
 }): Promise<{ ok: boolean; reason?: "not_configured" | "unreachable" | string }> {
   const url = process.env.ENG_EMAIL_WEBHOOK_URL;
   if (!url) return { ok: false, reason: "not_configured" };
@@ -128,6 +133,7 @@ export async function sendEngEmail(input: {
         to: input.to,
         subject: input.subject,
         body: input.body,
+        body_html: wrapEngineeringEmailHtml(input.body, input.lang ?? "fr", input.ref),
       }),
     });
     if (!res.ok) return { ok: false, reason: `http_${res.status}` };
@@ -140,7 +146,7 @@ export async function sendEngEmail(input: {
         .insert({
           engineering_request_id: input.requestId,
           author: user?.name ?? "Staff",
-          body: `📧 Email sent to ${input.to} — ${input.subject}`,
+          body: `📧 Email envoyé à ${input.to} : ${input.subject}`,
         });
     }
     revalidatePath("/engineering");
@@ -148,6 +154,14 @@ export async function sendEngEmail(input: {
   } catch {
     return { ok: false, reason: "unreachable" };
   }
+}
+
+/** Delete an engineering request (admin only — gated in the UI, mirrors deleteLead). */
+export async function deleteEngRequest(id: string) {
+  const sb = supabaseServer();
+  if (!sb) return;
+  await sb.from("engineering_requests").delete().eq("id", id);
+  revalidatePath("/engineering");
 }
 
 /** Add a staff comment to a request (author = logged-in user). */

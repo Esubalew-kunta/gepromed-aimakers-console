@@ -36,21 +36,29 @@ grant execute on function log_email_once(uuid, text, text, boolean) to service_r
 -- built by render_notification when the training is sponsored) rendered as
 -- its own row right under the header, above the letter body. Null/absent for
 -- non-sponsored trainings — fully backward compatible.
+-- Phase 10 (2026-07-29): premium redesign — real Gepromed logo (hosted in
+-- the public 'brand' storage bucket, since email clients need a public
+-- <img> URL, not a local file path) instead of a text wordmark, plus a
+-- cleaner premium layout (accent bar, refined footer). Same signature.
+-- Phase 11 (2026-07-29): footer disclaimer translated to French (was the
+-- last English string in the shell after Phase 11's template translation).
 create or replace function wrap_email_html(p_body text, p_sponsor_html text default null)
 returns text language sql immutable as $$
   select
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7f9;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">' ||
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:32px 0;font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;">' ||
     '<tr><td align="center">' ||
-    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #eceef2;border-radius:12px;overflow:hidden;">' ||
-    '<tr><td style="background:#1a4fb8;padding:20px 28px;">' ||
-    '<span style="color:#ffffff;font-size:20px;font-weight:bold;">Gepromed</span>' ||
-    '<span style="color:#bcdcff;font-size:12px;">&nbsp;&nbsp;Formation chirurgicale</span>' ||
+    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e7ee;border-radius:16px;overflow:hidden;">' ||
+    '<tr><td style="height:4px;line-height:4px;font-size:0;background:#1a4fb8;">&nbsp;</td></tr>' ||
+    '<tr><td style="padding:32px 32px 22px;">' ||
+    '<img src="https://hdvqiiprylrrzrkydtpa.supabase.co/storage/v1/object/public/brand/logo-gepromed-color.png" alt="Gepromed" height="38" style="height:38px;display:block;border:0;">' ||
+    '<div style="margin-top:12px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8891a3;">Formation chirurgicale d&rsquo;excellence</div>' ||
     '</td></tr>' ||
+    '<tr><td style="padding:0 32px;"><div style="border-top:1px solid #eceef2;"></div></td></tr>' ||
     coalesce(p_sponsor_html, '') ||
-    '<tr><td style="padding:28px;color:#1f2430;font-size:15px;line-height:1.6;">' ||
+    '<tr><td style="padding:28px 32px 32px;color:#232837;font-size:15.5px;line-height:1.7;">' ||
     (
       select string_agg(
-        '<p style="margin:0 0 14px;">' ||
+        '<p style="margin:0 0 15px;">' ||
         replace(trim(both E'\n' from para), E'\n', '<br>') ||
         '</p>',
         ''
@@ -64,8 +72,11 @@ returns text language sql immutable as $$
       where trim(para) <> ''
     ) ||
     '</td></tr>' ||
-    '<tr><td style="padding:16px 28px;background:#f9fafb;border-top:1px solid #eceef2;color:#9aa2b1;font-size:11px;">' ||
-    'Gepromed &middot; 4 rue Kirschleger, 67000 Strasbourg' ||
+    '<tr><td style="padding:22px 32px;background:#fafbfc;border-top:1px solid #eceef2;">' ||
+    '<div style="font-size:12.5px;font-weight:700;color:#3a4152;">Gepromed</div>' ||
+    '<div style="margin-top:3px;font-size:11.5px;color:#9aa2b1;line-height:1.6;">4 rue Kirschleger, 67000 Strasbourg, France<br>' ||
+    'www.gepromed.com &middot; +33 (0)3 88 00 00 00</div>' ||
+    '<div style="margin-top:10px;font-size:10.5px;color:#c1c6d0;">Vous recevez cet e-mail car vous êtes inscrit(e) à une formation Gepromed.</div>' ||
     '</td></tr>' ||
     '</table></td></tr></table>';
 $$;
@@ -94,12 +105,32 @@ $$;
 --     sponsored lead can still carry a stale contract_template_id from
 --     before the auto_attach_contract sponsor fix, so this is gated
 --     explicitly rather than relying on that column alone).
+-- Phase 9 (2026-07-24/25): added {{instructor_name}} (from the training's
+-- own `supervisors` data). Phase 10 (2026-07-29): filled v_bank_details with
+-- a realistic DEMO placeholder account (grep "DEMO ACCOUNT" — NOT real,
+-- must be swapped for Gepromed's actual account before go-live).
+-- Phase 11 (2026-07-29): all dynamic strings rewritten in French (Gepromed
+-- writes to French-speaking trainees by default; all 12 Bootcamp templates
+-- + trainee.hms.confirmed were translated from English in the same phase),
+-- and the " -- " literal-double-hyphen dash pattern removed — it read as
+-- AI-generated. v_title now prefers the French title (was English-first).
+-- Phase 12 (2026-07-29): the training title is now bolded + brand-blue
+-- everywhere it appears in the rendered body (UX: easy to scan in a long
+-- transactional email), via a post-escape string replace on the title text
+-- against the already-built body_html.
 create or replace function render_notification(p_lead uuid, p_template_key text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare tpl record; l record; t record; subj text; bod text; block text; dates text;
   v_sponsor_name text; v_registration_steps text; v_confirmation_ack text; v_sponsor_html text;
   v_attachment_url text; v_attachment_name text; ct record;
-  v_bank_details text := '[BANK DETAILS TO BE CONFIRMED — account holder, IBAN, BIC/SWIFT, bank name]';
+  v_instructor_name text; v_title text; v_title_esc text; v_body_html text;
+  -- DEMO ACCOUNT — placeholder only, NOT a real Gepromed bank account.
+  v_bank_details text :=
+    'Titulaire du compte : GEPROMED SARL' || E'\n' ||
+    'Banque : BNP Paribas, Strasbourg Kléber' || E'\n' ||
+    'IBAN : FR76 3000 4028 3701 0023 4567 891' || E'\n' ||
+    'BIC/SWIFT : BNPAFRPPXXX' || E'\n' ||
+    'Référence : merci d''indiquer votre nom complet + l''intitulé de la formation';
 begin
   select * into tpl from notification_templates where key = p_template_key and active limit 1;
   if not found then return jsonb_build_object('send', false, 'reason', 'template inactive/missing'); end if;
@@ -109,20 +140,26 @@ begin
 
   dates := coalesce(to_char(t.start_date, 'DD/MM/YYYY'), '')
     || case when t.end_date is not null and t.end_date <> t.start_date
-            then ' - ' || to_char(t.end_date, 'DD/MM/YYYY') else '' end;
+            then ' au ' || to_char(t.end_date, 'DD/MM/YYYY') else '' end;
 
+  v_title := coalesce(t.title->>'fr', t.title->>'en', '');
   v_sponsor_name := (select string_agg(s->>'name', ', ') from jsonb_array_elements(coalesce(t.sponsors,'[]'::jsonb)) s);
+
+  v_instructor_name := coalesce(
+    (select s->>'name' from jsonb_array_elements(coalesce(t.supervisors,'[]'::jsonb)) s limit 1),
+    'un membre de notre équipe pédagogique'
+  );
 
   if coalesce(t.is_sponsored, false) then
     block := 'Sponsorisé : ' || coalesce(v_sponsor_name, 'labo(s)');
     v_registration_steps :=
-      'Your seat is fully funded by ' || coalesce(v_sponsor_name, 'our sponsor') ||
-      ' -- no deposit or commitment contract is required from you. Your registration is confirmed directly.';
+      'Votre place est entièrement financée par ' || coalesce(v_sponsor_name, 'notre sponsor') ||
+      ', aucune caution ni contrat d''engagement ne vous sera demandé. Votre inscription est confirmée directement.';
     v_confirmation_ack :=
-      'Your registration for the ' || coalesce(t.title->>'en', t.title->>'fr', '') ||
-      ', which will take place at Gepromed on ' || dates ||
-      ', is confirmed -- no deposit or contract required, as your seat is funded by ' ||
-      coalesce(v_sponsor_name, 'our sponsor') || '.';
+      'Votre inscription pour ' || v_title ||
+      ', qui se déroulera à Gepromed le ' || dates ||
+      ', est confirmée : aucune caution ni contrat n''est requis, votre place étant financée par ' ||
+      coalesce(v_sponsor_name, 'notre sponsor') || '.';
 
     select string_agg(
       '<tr><td style="padding:14px 28px 0;">' ||
@@ -138,7 +175,7 @@ begin
         upper(left(coalesce(replace(s->>'name','&','&amp;'),'SP'),2)) || '</td></tr></table>'
       end ||
       '</td><td style="vertical-align:middle;">' ||
-      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#7c6ff0;font-weight:bold;">Training funded by</div>' ||
+      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#7c6ff0;font-weight:bold;">Formation financée par</div>' ||
       '<div style="font-size:14px;font-weight:600;color:#1f2430;">' || replace(coalesce(s->>'name','Sponsor'),'&','&amp;') || '</div>' ||
       '</td></tr></table>' ||
       '</td></tr></table>' ||
@@ -149,13 +186,13 @@ begin
   else
     block := 'Tarif participant : ' || coalesce(t.price_eur::text, '') || ' EUR';
     v_registration_steps :=
-      '- Signing the training commitment agreement (attached).' || E'\n' ||
-      '- Paying a EUR200 deposit by bank transfer to the account below, then replying to this email with a screenshot or receipt of the transfer as proof of payment (deposits are verified manually):' || E'\n\n' ||
+      '- Signer le contrat d''engagement de la formation (joint à cet e-mail).' || E'\n' ||
+      '- Régler une caution de 200 € par virement bancaire sur le compte ci-dessous, puis répondre à cet e-mail avec une capture d''écran ou un justificatif du virement comme preuve de paiement (les cautions sont vérifiées manuellement) :' || E'\n\n' ||
       v_bank_details || E'\n\n' ||
-      'This deposit is fully refundable at the end of the training. It was introduced to help minimize last-minute cancellations and ensure smooth logistics for all participants.';
+      'Cette caution est intégralement remboursée à la fin de la formation. Elle a été mise en place afin de limiter les désistements de dernière minute et d''assurer une bonne organisation logistique pour l''ensemble des participants.';
     v_confirmation_ack :=
-      'I acknowledge receipt of your signed contract as well as the deposit payment for the ' ||
-      coalesce(t.title->>'en', t.title->>'fr', '') || ', which will take place at Gepromed on ' || dates || '.';
+      'Nous confirmons la bonne réception de votre contrat signé ainsi que du paiement de votre caution pour ' ||
+      v_title || ', qui se déroulera à Gepromed le ' || dates || '.';
     v_sponsor_html := null;
   end if;
 
@@ -174,13 +211,13 @@ begin
 
   subj := tpl.subject; bod := tpl.body;
 
-  subj := replace(replace(replace(subj, '{{title}}', coalesce(t.title->>'fr','')),
+  subj := replace(replace(replace(subj, '{{title}}', v_title),
                           '{{first_name}}', coalesce(l.first_name,'')),
                   '{{last_name}}', coalesce(l.last_name,''));
 
   bod := replace(bod, '{{first_name}}', coalesce(l.first_name,''));
   bod := replace(bod, '{{last_name}}', coalesce(l.last_name,''));
-  bod := replace(bod, '{{title}}', coalesce(t.title->>'fr',''));
+  bod := replace(bod, '{{title}}', v_title);
   bod := replace(bod, '{{dates}}', dates);
   bod := replace(bod, '{{duration_days}}', coalesce(t.duration_days::text,''));
   bod := replace(bod, '{{tarif}}', coalesce(t.price_eur::text,''));
@@ -188,10 +225,22 @@ begin
   bod := replace(bod, '{{registration_steps}}', v_registration_steps);
   bod := replace(bod, '{{confirmation_ack}}', v_confirmation_ack);
   bod := replace(bod, '{{elearning_link}}', 'https://gepromed.sinfony.eu/');
+  bod := replace(bod, '{{instructor_name}}', v_instructor_name);
+
+  v_body_html := wrap_email_html(bod, v_sponsor_html);
+
+  if v_title <> '' then
+    v_title_esc := replace(replace(replace(v_title, '&', '&amp;'), '<', '&lt;'), '>', '&gt;');
+    v_body_html := replace(
+      v_body_html,
+      v_title_esc,
+      '<strong style="color:#1a4fb8;">' || v_title_esc || '</strong>'
+    );
+  end if;
 
   return jsonb_build_object(
     'send', true, 'to', l.email, 'subject', subj, 'body', bod,
-    'body_html', wrap_email_html(bod, v_sponsor_html), 'sender', tpl.sender,
+    'body_html', v_body_html, 'sender', tpl.sender,
     'attachment_url', v_attachment_url, 'attachment_name', v_attachment_name
   );
 end; $$;

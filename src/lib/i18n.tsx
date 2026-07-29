@@ -62,6 +62,8 @@ export function useLang() {
 // Start with the sidebar nav (highest-visibility, every page) + shared chrome;
 // extend page-by-page as each is converted from hardcoded English.
 const DICT = {
+  "common.cancel": { fr: "Annuler", en: "Cancel" },
+  "common.delete": { fr: "Supprimer", en: "Delete" },
   "nav.dashboard": { fr: "Tableau de bord", en: "Dashboard" },
   "nav.trainees": { fr: "Gestion des Trainees", en: "Trainees management" },
   "nav.courses": { fr: "Gestion des formations", en: "Course management" },
@@ -270,6 +272,18 @@ const DICT = {
   "pipeline.drawer.depositWaiverTitle": {
     fr: "Exception inscrit tardif : caution 200 € / contrat levés",
     en: "Late registrant exception: €200 deposit / contract waived",
+  },
+  "pipeline.drawer.depositDocAwaitingNote": {
+    fr: "En attente du contrat signé — téléversez-le ci-dessous pour confirmer cette étape.",
+    en: "Awaiting the signed contract — upload it below to confirm this step.",
+  },
+  "pipeline.drawer.depositDocReceivedNote": {
+    fr: "Contrat signé reçu. La caution/le contrat sont confirmés.",
+    en: "Signed contract received. Deposit/contract are confirmed.",
+  },
+  "pipeline.drawer.depositWaivedNote": {
+    fr: "Caution levée (exception) — aucun contrat signé requis. Cliquez pour confirmer cette étape.",
+    en: "Deposit waived (exception) — no signed contract required. Click to confirm this step.",
   },
   "pipeline.drawer.attendedConfirmed": { fr: "Présent · formation suivie", en: "Attended · training completed" },
   "pipeline.drawer.attendanceNotConfirmed": { fr: "Présence non confirmée", en: "Attendance not confirmed" },

@@ -74,7 +74,7 @@ import {
   
     const subjectParts = [
       "[GEPROMED]",
-      `Nouvelle demande — ${requestType}`,
+      `Nouvelle demande : ${requestType}`,
       reference,
     ];
   

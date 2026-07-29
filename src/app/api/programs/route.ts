@@ -429,7 +429,6 @@ h1.title{color:var(--navy);font-size:20pt;line-height:1.15;margin:14px 0 4px;}
 .parallel{display:flex;gap:8px;}
 .gcol{flex:1 1 0;min-width:0;border:1px solid var(--hair);border-radius:3px;padding:6px;background:#fff;}
 .ghead{font-size:8.4pt;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;border-bottom:1px dashed var(--hair);padding-bottom:3px;}
-.compliance{margin-top:18px;padding:9px 12px;background:var(--tint);border-radius:4px;font-size:8.4pt;color:var(--muted);font-style:italic;}
 .printbar{position:sticky;top:0;z-index:10;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;font-size:9.5pt;}
 .printbar .left{display:flex;align-items:center;gap:14px;min-width:0;}
 .printbar .backlink{color:#fff;text-decoration:none;font-weight:600;white-space:nowrap;border:1px solid rgba(255,255,255,.35);border-radius:4px;padding:5px 10px;}
@@ -470,9 +469,6 @@ function prepareMeta(metadataIn: Metadata): { meta: Metadata; rawTitle: string; 
   return { meta, rawTitle, rawRefBits };
 }
 
-const COMPLIANCE_NOTE =
-  "Note de conformité : ce programme suit les exigences du Référentiel National Qualité (Qualiopi). Vérifier que chaque objectif est évaluable et couvert par les modalités d'évaluation. Toute valeur entre crochets doit être confirmée par le Responsable Qualité avant diffusion publique.";
-
 function renderProgramHtml(metadataIn: Metadata, slots: Slot[], returnUrl: string | null = null): string {
   const { meta, rawTitle, rawRefBits } = prepareMeta(metadataIn);
   const timetable = buildTimetable(slots);
@@ -498,8 +494,7 @@ function renderProgramHtml(metadataIn: Metadata, slots: Slot[], returnUrl: strin
 <p class="refline">${refBits.join("  ·  ")}</p>
 ${blockHtml.join("")}
 ${timetableHtml(timetable)}
-<div class="compliance">${esc(COMPLIANCE_NOTE)}</div>
-<div class="footer">GEPROMED, organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485 &nbsp;|&nbsp; Document de travail, à valider par le Responsable Qualité avant diffusion</div>
+<div class="footer">GEPROMED, organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485</div>
 </div></body></html>`;
 }
 
@@ -614,8 +609,6 @@ function buildProgramPdfBuffer(metadataIn: Metadata, slots: Slot[]): Promise<Buf
     doc.moveDown(0.5);
     doc.rect(40, doc.y, 515, 0.75).fill(HAIR);
     doc.moveDown(0.4);
-    doc.fontSize(7.5).fillColor(MUTED).font("Helvetica-Oblique").text(COMPLIANCE_NOTE, 40, doc.y, { width: 515 });
-    doc.moveDown(0.6);
     doc.fontSize(7).fillColor(MUTED).font("Helvetica").text(
       "GEPROMED, organisme de formation certifié Qualiopi · ISO 9001 · ISO 13485",
       40,

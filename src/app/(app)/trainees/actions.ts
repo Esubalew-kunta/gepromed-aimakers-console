@@ -98,7 +98,8 @@ export async function advanceStage(
     const { count } = await sb
       .from("documents")
       .select("id", { count: "exact", head: true })
-      .eq("lead_id", leadId);
+      .eq("lead_id", leadId)
+      .eq("kind", "contract");
     if (!count) {
       await logEvent(leadId, "gate:blocked", {
         stage: current,
@@ -339,17 +340,24 @@ export async function deleteLead(leadId: string) {
   revalidatePath("/trainees");
 }
 
+export type DocumentKind = "contract" | "payment_receipt";
+
 /**
- * Staff uploads the lead's signed engagement document (manual signing path).
- * Stores the file in the private `documents` bucket, records a documents row
+ * Staff uploads a document on the lead's behalf (manual signing path) — the
+ * signed engagement contract, or the payment-receipt screenshot, whichever
+ * the trainee couldn't submit themselves via the public upload link. Stores
+ * the file in the private `documents` bucket, records a documents row
  * (pending verification), and, for the Bootcamp parcours, moves the lead to
- * `deposit_contract` (caution / contrat reçus). HelpMeSee has no signed
+ * `deposit_contract` (caution / contrat reçus) the first time the CONTRACT
+ * comes in — a receipt alone doesn't advance the stage; staff confirm once
+ * both documents exist (see `verifyAndConfirm`). HelpMeSee has no signed
  * engagement step, so the stage is left unchanged there.
  */
 export async function uploadDocument(
   leadId: string,
   fd: FormData,
   parcours: Parcours = "bootcamp",
+  kind: DocumentKind = "contract",
 ): Promise<{ error?: string }> {
   const sb = supabaseServer();
   if (!sb) return { error: "Supabase not configured." };
@@ -357,7 +365,7 @@ export async function uploadDocument(
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a file to upload." };
 
   const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
-  const path = `${leadId}/${Date.now()}.${ext}`;
+  const path = `${leadId}/${kind}-${Date.now()}.${ext}`;
   const { error: upErr } = await sb.storage
     .from("documents")
     .upload(path, file, { contentType: file.type, upsert: true });
@@ -369,30 +377,36 @@ export async function uploadDocument(
     sign_channel: "manual",
     signed: true,
     verified: false,
+    kind,
   });
 
-  const now = new Date().toISOString();
-  const patch: Record<string, unknown> = {
-    sign_channel: "manual",
-    contract_signed_at: now,
-  };
-  // Bootcamp: receiving the signed caution/contrat advances to deposit_contract.
-  if (parcours === "bootcamp") {
-    patch.stage = "deposit_contract";
-    patch.deposit_contract_at = now;
+  if (kind === "contract" && parcours === "bootcamp") {
+    const now = new Date().toISOString();
+    await sb
+      .from("leads")
+      .update({ sign_channel: "manual", stage: "deposit_contract", deposit_contract_at: now })
+      .eq("id", leadId);
   }
-  await sb.from("leads").update(patch).eq("id", leadId);
-  await logEvent(leadId, "document:uploaded", { channel: "manual", parcours });
+  await logEvent(leadId, "document:uploaded", { channel: "manual", parcours, kind });
   revalidatePath("/trainees");
   return {};
 }
 
-/** Verify an uploaded document and confirm the seat (+ mock LMS handoff). */
-export async function verifyAndConfirm(leadId: string, docId: string) {
+/**
+ * Staff confirms the caution/contrat step once they've checked both the
+ * signed contract AND the payment-receipt screenshot are present — marks
+ * every unverified document on the lead as verified in one pass (rather
+ * than per-document), then confirms the seat (+ mock LMS handoff).
+ */
+export async function verifyAndConfirm(leadId: string) {
   const sb = supabaseServer();
   if (!sb) return;
   const now = new Date().toISOString();
-  await sb.from("documents").update({ verified: true, verified_at: now }).eq("id", docId);
+  await sb
+    .from("documents")
+    .update({ verified: true, verified_at: now })
+    .eq("lead_id", leadId)
+    .eq("verified", false);
   await sb
     .from("leads")
     .update({
@@ -402,7 +416,7 @@ export async function verifyAndConfirm(leadId: string, docId: string) {
       lms_user_id: `GLMS-${leadId.slice(0, 8).toUpperCase()}`,
     })
     .eq("id", leadId);
-  await logEvent(leadId, "document:verified", { docId });
+  await logEvent(leadId, "document:verified", {});
   // Confirming the seat is a stage change → n8n sends the confirmation email.
   const { data: p } = await sb.from("leads").select("parcours").eq("id", leadId).single();
   await logEvent(leadId, "stage:confirmed", {

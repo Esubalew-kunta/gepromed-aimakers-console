@@ -9,7 +9,7 @@ import {
   stageTone,
 } from "@/lib/leads-shared";
 import { useT, useLang } from "@/lib/i18n";
-import { getDocumentUrl } from "@/app/(app)/trainees/actions";
+import { type DocumentKind, getDocumentUrl } from "@/app/(app)/trainees/actions";
 import { Icon } from "./Icon";
 
 const fmtDate = (iso?: string | null) =>
@@ -277,12 +277,14 @@ export function TraineeSummaryDrawer({
           })()}
         </section>
 
-        {/* Signed document — read-only: status + view link, no upload/verify controls */}
-        <section>
+        {/* Signed contract + payment receipt — read-only: status + view link,
+            no upload/verify controls (those live in the pipeline drawer). */}
+        <section className="space-y-3">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-400">
             {t("traineeSummary.documentSection")}
           </p>
-          <SignedDocumentView lead={lead} />
+          <SignedDocumentView lead={lead} kind="contract" label={t("pipeline.doc.contractTitle")} />
+          <SignedDocumentView lead={lead} kind="payment_receipt" label={t("pipeline.doc.receiptTitle")} />
         </section>
       </div>
     </div>
@@ -294,9 +296,17 @@ export function TraineeSummaryDrawer({
  * mutates anything). The file lives in a private bucket, so a signed URL is
  * resolved once up front (for both the thumbnail and the link) rather than
  * on click. */
-function SignedDocumentView({ lead }: { lead: Lead }) {
+function SignedDocumentView({
+  lead,
+  kind,
+  label,
+}: {
+  lead: Lead;
+  kind: DocumentKind;
+  label: string;
+}) {
   const t = useT();
-  const doc = lead.documents?.[0] ?? null;
+  const doc = lead.documents?.find((d) => d.kind === kind) ?? null;
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -320,7 +330,7 @@ function SignedDocumentView({ lead }: { lead: Lead }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={url}
-          alt={t("traineeSummary.documentSection")}
+          alt={label}
           className="h-14 w-14 shrink-0 rounded-lg border border-ink-200 bg-white object-cover"
         />
       ) : (
@@ -330,7 +340,7 @@ function SignedDocumentView({ lead }: { lead: Lead }) {
       )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-ink-900">
-          {doc ? t("traineeSummary.documentSection") : t("traineeSummary.documentNone")}
+          {doc ? label : t("traineeSummary.documentNone")}
         </p>
         {doc ? (
           <p className="text-xs text-ink-500">

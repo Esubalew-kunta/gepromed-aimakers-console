@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { type Lead, normalizeParcours } from "@/lib/leads-shared";
 import { useT, useLang } from "@/lib/i18n";
+import { Pagination } from "./Pagination";
+import { usePagination } from "@/lib/use-pagination";
 
 const fmtDay = (iso?: string | null) =>
   iso
@@ -90,12 +92,25 @@ export function CourseRollupTable({
     return Array.from(groups.values()).sort((a, b) => a.startDate.localeCompare(b.startDate));
   }, [leads, lang]);
 
+  const {
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    pageCount,
+    pageItems: pageCourses,
+    total,
+    startIndex,
+    endIndex,
+  } = usePagination(courses);
+
   return (
     <div>
-      <div className="card overflow-x-auto p-0">
+      <div className="card overflow-hidden p-0">
+        <div className="max-h-[65vh] overflow-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-ink-100 text-left text-xs font-bold uppercase tracking-wide text-ink-400">
+            <tr className="sticky top-0 z-10 border-b border-ink-100 bg-ink-50 text-left text-xs font-bold uppercase tracking-wide text-ink-400">
               <th className="px-5 py-3">{t("courseRollup.colCourse")}</th>
               <th className="px-5 py-3">{t("courseRollup.colDates")}</th>
               <th className="px-5 py-3">{t("courseRollup.colFillRate")}</th>
@@ -111,7 +126,7 @@ export function CourseRollupTable({
                 </td>
               </tr>
             ) : (
-              courses.map((c) => {
+              pageCourses.map((c) => {
                 const fillPct = c.capacity > 0 ? Math.round((c.enrolled / c.capacity) * 100) : 0;
                 const helpmeseeOutstanding = c.helpmeseeCount - c.helpmeseeInvoicesPaid;
                 const bootcampOutstanding = c.bootcampCount - c.bootcampDepositsCollected;
@@ -185,6 +200,19 @@ export function CourseRollupTable({
             )}
           </tbody>
         </table>
+        </div>
+        {courses.length > 0 && (
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={total}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </div>
       <p className="mt-3 text-xs text-ink-400">{t("courseRollup.tuitionNote")}</p>
     </div>

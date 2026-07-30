@@ -23,6 +23,8 @@ import { EngineeringKpiRow, engStatus } from "./EngineeringKpiRow";
 import { EngineeringStatsChart } from "./EngineeringStatsChart";
 import { TableExportMenu } from "./TableExportMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Pagination } from "./Pagination";
+import { usePagination } from "@/lib/use-pagination";
 import type { ExportColumn } from "@/lib/export-table";
 
 type Kind = "explant" | "test" | "equipment";
@@ -114,6 +116,18 @@ export function EngineeringBoards({
       return true;
     });
   }, [kindRows, query, stageFilter, statusFilter, dateFrom, dateTo]);
+
+  const {
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    pageCount,
+    pageItems: pageRows,
+    total,
+    startIndex,
+    endIndex,
+  } = usePagination(rows);
 
   const selected = openId ? requests.find((r) => r.id === openId) ?? null : null;
   const open = Boolean(selected);
@@ -228,24 +242,38 @@ export function EngineeringBoards({
 
       <EngineeringStatsChart rows={rows} def={def} />
 
-      <div className={`card divide-y divide-ink-100 ${pending ? "opacity-60" : ""}`}>
+      <div className={`card overflow-hidden p-0 ${pending ? "opacity-60" : ""}`}>
         {rows.length === 0 ? (
           <p className="p-10 text-center text-ink-400">
             {filtersActive ? t("engineering.noMatch") : t("engineering.empty")}
           </p>
         ) : (
-          rows.map((r) => (
-            <Row
-              key={r.id}
-              r={r}
-              def={def}
-              onOpen={() => setOpenId(r.id)}
-              t={t}
-              lang={lang}
-              canDelete={canDelete}
-              onRequestDelete={() => setDeleteTarget(r)}
+          <>
+            <div className="max-h-[65vh] divide-y divide-ink-100 overflow-auto">
+              {pageRows.map((r) => (
+                <Row
+                  key={r.id}
+                  r={r}
+                  def={def}
+                  onOpen={() => setOpenId(r.id)}
+                  t={t}
+                  lang={lang}
+                  canDelete={canDelete}
+                  onRequestDelete={() => setDeleteTarget(r)}
+                />
+              ))}
+            </div>
+            <Pagination
+              page={page}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={total}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
             />
-          ))
+          </>
         )}
       </div>
 

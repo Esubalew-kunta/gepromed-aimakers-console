@@ -9,6 +9,7 @@ import {
   type Stage,
   type Parcours,
   type InterestLevel,
+  type LeadDocument,
   PARCOURS,
   PARCOURS_LABEL,
   PARCOURS_TONE,
@@ -22,6 +23,7 @@ import {
   INTEREST_LEVELS,
 } from "@/lib/leads-shared";
 import {
+  type DocumentKind,
   advanceStage,
   setInterest,
   setNotInterested,
@@ -733,7 +735,7 @@ export function LeadBoard({
         role="dialog"
         aria-modal="true"
         aria-label={t("pipeline.drawerAriaLabel")}
-        className={`fixed right-0 top-0 z-50 flex h-screen w-[524px] max-w-[94vw] flex-col bg-white shadow-2xl transition-transform duration-200 ${
+        className={`fixed right-0 top-0 z-50 flex h-screen w-[720px] max-w-[95vw] flex-col bg-white shadow-2xl transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         } motion-reduce:transition-none`}
       >
@@ -1525,19 +1527,30 @@ function FilterRow({
   );
 }
 
-function DocState({ lead }: { lead: Lead }) {
+/** One document tile (contract or payment receipt): status pill, view link
+ * when present, upload control when missing — used twice by DocState below. */
+function DocTile({
+  lead,
+  kind,
+  title,
+  uploadLabel,
+  doc,
+  disabled,
+  onUploaded,
+}: {
+  lead: Lead;
+  kind: DocumentKind;
+  title: string;
+  uploadLabel: string;
+  doc: LeadDocument | null;
+  disabled: boolean;
+  onUploaded: () => void;
+}) {
   const t = useT();
-  const router = useRouter();
   const [busy, startBusy] = useTransition();
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState("");
-
   const parcours = normalizeParcours(lead);
-  const doc = lead.documents?.[0] ?? null;
-  const confirmedOrLater =
-    lead.stage === "confirmed" ||
-    lead.stage === "done" ||
-    lead.stage === "deposit_refunded";
 
   const state = doc
     ? doc.verified
@@ -1547,11 +1560,7 @@ function DocState({ lead }: { lead: Lead }) {
           pill: t("pipeline.doc.pendingPill"),
           tone: "bg-amber-50 text-amber-700",
         }
-    : confirmedOrLater
-      ? { text: t("pipeline.doc.nonePastStageText"), pill: t("pipeline.doc.nonePill"), tone: "bg-ink-100 text-ink-500" }
-      : lead.stage === "lead"
-        ? { text: t("pipeline.doc.notSentText"), pill: t("pipeline.doc.notSentPill"), tone: "bg-ink-100 text-ink-500" }
-        : { text: t("pipeline.doc.awaitingText"), pill: t("pipeline.doc.awaitingPill"), tone: "bg-amber-50 text-amber-700" };
+    : { text: t("pipeline.doc.missingText"), pill: t("pipeline.doc.missingPill"), tone: "bg-ink-100 text-ink-500" };
 
   const view = () =>
     startBusy(async () => {
@@ -1566,21 +1575,14 @@ function DocState({ lead }: { lead: Lead }) {
     startBusy(async () => {
       const fd = new FormData();
       fd.append("file", file);
-      const r = await uploadDocument(lead.id, fd, parcours);
+      const r = await uploadDocument(lead.id, fd, parcours, kind);
       if (r.error) setErr(r.error);
       else {
         setFile(null);
-        router.refresh();
+        onUploaded();
       }
     });
   };
-
-  const verify = () =>
-    startBusy(async () => {
-      if (!doc) return;
-      await verifyAndConfirm(lead.id, doc.id);
-      router.refresh();
-    });
 
   return (
     <div className={busy ? "opacity-60" : ""}>
@@ -1589,7 +1591,7 @@ function DocState({ lead }: { lead: Lead }) {
           <Icon name="clipboard-check" className="h-4 w-4" />
         </div>
         <div className="flex-1">
-          <p className="text-[13px] font-semibold text-ink-900">{t("pipeline.doc.title")}</p>
+          <p className="text-[13px] font-semibold text-ink-900">{title}</p>
           <p className="text-xs text-ink-500">{state.text}</p>
         </div>
         <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${state.tone}`}>
@@ -1597,24 +1599,15 @@ function DocState({ lead }: { lead: Lead }) {
         </span>
       </div>
 
-      {/* Existing document → view / verify */}
       {doc ? (
-        <div className="mt-2.5 flex flex-wrap gap-2">
+        <div className="mt-2.5">
           <button onClick={view} className="btn-ghost !py-1.5 !text-xs">
             {t("pipeline.doc.viewSigned")}
           </button>
-          {!doc.verified ? (
-            <button onClick={verify} className="btn-primary !py-1.5 !text-xs">
-              {t("pipeline.doc.verifyConfirm")}
-            </button>
-          ) : null}
         </div>
-      ) : !confirmedOrLater ? (
-        /* No document → staff uploads the signed doc the lead returned */
+      ) : !disabled ? (
         <div className="mt-2.5">
-          <label className="mb-1 block text-[11px] font-medium text-ink-500">
-            {t("pipeline.doc.uploadLabel")}
-          </label>
+          <label className="mb-1 block text-[11px] font-medium text-ink-500">{uploadLabel}</label>
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="file"
@@ -1630,13 +1623,75 @@ function DocState({ lead }: { lead: Lead }) {
               {t("pipeline.doc.uploadButton")}
             </button>
           </div>
-          <p className="mt-1.5 text-[11px] text-ink-400">
-            {t("pipeline.doc.onlineSigningNote")}
-          </p>
         </div>
       ) : null}
 
       {err ? <p className="mt-2 text-xs text-red-600">{err}</p> : null}
+    </div>
+  );
+}
+
+/** Contract + payment-receipt tiles, plus a single "verify & confirm" action
+ * gated on BOTH documents being present — staff check the two tiles above,
+ * then confirm the step once (not per-document). */
+function DocState({ lead }: { lead: Lead }) {
+  const t = useT();
+  const router = useRouter();
+  const [busy, startBusy] = useTransition();
+
+  const contractDoc = lead.documents?.find((d) => d.kind === "contract") ?? null;
+  const receiptDoc = lead.documents?.find((d) => d.kind === "payment_receipt") ?? null;
+  const confirmedOrLater =
+    lead.stage === "confirmed" ||
+    lead.stage === "done" ||
+    lead.stage === "deposit_refunded";
+  const bothPresent = Boolean(contractDoc && receiptDoc);
+  const anyUnverified = [contractDoc, receiptDoc].some((d) => d && !d.verified);
+
+  const refresh = () => router.refresh();
+
+  const confirm = () =>
+    startBusy(async () => {
+      await verifyAndConfirm(lead.id);
+      router.refresh();
+    });
+
+  if (confirmedOrLater && !contractDoc && !receiptDoc) {
+    return <p className="text-xs text-ink-400">{t("pipeline.doc.nonePastStageText")}</p>;
+  }
+
+  return (
+    <div className={busy ? "opacity-60" : ""}>
+      <div className="space-y-3">
+        <DocTile
+          lead={lead}
+          kind="contract"
+          title={t("pipeline.doc.contractTitle")}
+          uploadLabel={t("pipeline.doc.uploadContractLabel")}
+          doc={contractDoc}
+          disabled={confirmedOrLater}
+          onUploaded={refresh}
+        />
+        <DocTile
+          lead={lead}
+          kind="payment_receipt"
+          title={t("pipeline.doc.receiptTitle")}
+          uploadLabel={t("pipeline.doc.uploadReceiptLabel")}
+          doc={receiptDoc}
+          disabled={confirmedOrLater}
+          onUploaded={refresh}
+        />
+      </div>
+
+      {!confirmedOrLater ? (
+        bothPresent && anyUnverified ? (
+          <button onClick={confirm} className="btn-primary mt-3 w-full !py-1.5 !text-xs">
+            {t("pipeline.doc.verifyConfirm")}
+          </button>
+        ) : !bothPresent ? (
+          <p className="mt-3 text-[11px] text-ink-400">{t("pipeline.doc.awaitingBoth")}</p>
+        ) : null
+      ) : null}
     </div>
   );
 }

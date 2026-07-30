@@ -18,6 +18,8 @@ import { TraineeSummaryDrawer } from "./TraineeSummaryDrawer";
 import { TraineeStatsChart } from "./TraineeStatsChart";
 import { Icon } from "./Icon";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Pagination } from "./Pagination";
+import { usePagination } from "@/lib/use-pagination";
 
 const fmtDay = (iso?: string | null) =>
   iso
@@ -144,6 +146,18 @@ export function TraineeSummaryTable({
   useEffect(() => {
     onVisibleChange?.(visible);
   }, [visible, onVisibleChange]);
+
+  const {
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    pageCount,
+    pageItems: pageRows,
+    total,
+    startIndex,
+    endIndex,
+  } = usePagination(visible);
 
   const liveLead = leads.find((l) => l.id === openId) ?? null;
   const keepRef = useRef<Lead | null>(null);
@@ -274,10 +288,10 @@ export function TraineeSummaryTable({
             {visible.length !== leads.length ? ` / ${leads.length}` : ""}
           </p>
         </div>
-        <div className="overflow-x-auto">
+        <div className="max-h-[65vh] overflow-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-ink-100 bg-ink-50/60 text-left text-[11px] font-bold uppercase tracking-wide text-ink-400">
+              <tr className="sticky top-0 z-10 border-b border-ink-100 bg-ink-50 text-left text-[11px] font-bold uppercase tracking-wide text-ink-400">
                 <th className="px-5 py-3">{t("traineeSummary.colTrainee")}</th>
                 <th className="px-5 py-3">{t("traineeSummary.colCourse")}</th>
                 <th className="px-5 py-3">{t("traineeSummary.colStatus")}</th>
@@ -295,7 +309,7 @@ export function TraineeSummaryTable({
                   </td>
                 </tr>
               ) : (
-                visible.map((l, i) => {
+                pageRows.map((l, i) => {
                   const parcours = normalizeParcours(l);
                   return (
                     <tr
@@ -349,6 +363,18 @@ export function TraineeSummaryTable({
             </tbody>
           </table>
         </div>
+        {visible.length > 0 && (
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={total}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </div>
 
       {/* Scrim + read-only detail drawer */}

@@ -391,6 +391,8 @@ export interface LeadComment {
   created_at: string;
 }
 
+export type DocumentKind = "contract" | "payment_receipt";
+
 export interface LeadDocument {
   id: string;
   file_url: string | null;
@@ -399,6 +401,7 @@ export interface LeadDocument {
   verified: boolean;
   verified_at: string | null;
   created_at: string;
+  kind: DocumentKind;
 }
 
 /** Row in the audit/activity log written on each stage transition + action. */

@@ -187,6 +187,14 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M5.5 5h13l2.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6l2.5-7z" />
     </>
   ),
+  "panel-left": (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </>
+  ),
+  "chevron-left": <path d="M15 6l-6 6 6 6" />,
+  "chevron-right": <path d="M9 6l6 6-6 6" />,
 };
 
 export function Icon({

@@ -79,7 +79,19 @@ const DICT = {
   "nav.contacts": { fr: "Contacts", en: "Contacts" },
   "nav.feedback": { fr: "Retours", en: "Feedback" },
 
+  // Shared table pagination control
+  "pagination.rowsPerPage": { fr: "Lignes par page", en: "Rows per page" },
+  "pagination.showing": {
+    fr: "{from}–{to} sur {total}",
+    en: "{from}–{to} of {total}",
+  },
+  "pagination.page": { fr: "Page {page} / {pages}", en: "Page {page} of {pages}" },
+  "pagination.prev": { fr: "Précédent", en: "Previous" },
+  "pagination.next": { fr: "Suivant", en: "Next" },
+
   "chrome.menu": { fr: "Menu", en: "Menu" },
+  "chrome.collapse": { fr: "Réduire le menu", en: "Collapse sidebar" },
+  "chrome.expand": { fr: "Développer le menu", en: "Expand sidebar" },
   "chrome.signOut": { fr: "Se déconnecter", en: "Sign out" },
   "chrome.by": { fr: "par AI Makers", en: "by AI Makers" },
   "chrome.demoMode": {
@@ -383,7 +395,7 @@ const DICT = {
     fr: "Aucun modèle pour le moment. Ajoutez-en dans Modèles de contrats (admin).",
     en: "No templates yet. Add them in Contract templates (admin).",
   },
-  "pipeline.drawer.signedDocument": { fr: "Document signé", en: "Signed document" },
+  "pipeline.drawer.signedDocument": { fr: "Contrat & justificatif de paiement", en: "Contract & payment receipt" },
   "pipeline.drawer.communications": { fr: "Communications", en: "Communications" },
   "pipeline.drawer.noEmailsYet": {
     fr: "Aucun email pour l'instant. Un email est généré et enregistré automatiquement à chaque changement d'étape.",
@@ -406,24 +418,29 @@ const DICT = {
   "pipeline.drawer.closeDepositKept": { fr: "Terminer, caution conservée", en: "Close out, deposit kept" },
 
   // LeadBoard drawer — DocState
-  "pipeline.doc.title": { fr: "Document d'engagement", en: "Engagement document" },
   "pipeline.doc.verifiedText": { fr: "Signé & vérifié. Place confirmée.", en: "Signed & verified. Seat confirmed." },
   "pipeline.doc.verifiedPill": { fr: "Vérifié", en: "Verified" },
   "pipeline.doc.pendingText": { fr: "Chargé & signé ({channel}), en attente de vérification.", en: "Uploaded & signed ({channel}), awaiting verification." },
   "pipeline.doc.pendingPill": { fr: "En attente de vérification", en: "Pending verification" },
   "pipeline.doc.nonePastStageText": { fr: "Aucun document en attente à ce stade.", en: "No document pending at this stage." },
-  "pipeline.doc.nonePill": { fr: "Aucun", en: "None" },
-  "pipeline.doc.notSentText": { fr: "Envoyé au trainee après les premières étapes du parcours.", en: "Sent to the trainee after the track's first steps." },
-  "pipeline.doc.notSentPill": { fr: "Non envoyé", en: "Not sent" },
-  "pipeline.doc.awaitingText": { fr: "En attente du document d'engagement signé.", en: "Awaiting the signed engagement document." },
-  "pipeline.doc.awaitingPill": { fr: "En attente de signature", en: "Awaiting signature" },
   "pipeline.doc.viewSigned": { fr: "📄 Voir le document signé", en: "📄 View signed document" },
   "pipeline.doc.verifyConfirm": { fr: "Vérifier & confirmer la place →", en: "Verify & confirm seat →" },
-  "pipeline.doc.uploadLabel": { fr: "Charger le document d'engagement signé", en: "Upload the signed engagement document" },
   "pipeline.doc.uploadButton": { fr: "Charger & marquer signé", en: "Upload & mark signed" },
   "pipeline.doc.onlineSigningNote": {
     fr: "La signature électronique en ligne (Documenso) s'attache ici automatiquement une fois n8n configuré.",
     en: "Online e-signing (Documenso) attaches here automatically once n8n is wired.",
+  },
+
+  // Per-document-kind tiles (contract + payment receipt), Phase: dual upload
+  "pipeline.doc.contractTitle": { fr: "Contrat signé", en: "Signed contract" },
+  "pipeline.doc.receiptTitle": { fr: "Justificatif de paiement", en: "Payment receipt" },
+  "pipeline.doc.missingText": { fr: "Pas encore reçu.", en: "Not received yet." },
+  "pipeline.doc.missingPill": { fr: "Manquant", en: "Missing" },
+  "pipeline.doc.uploadContractLabel": { fr: "Charger le contrat signé", en: "Upload the signed contract" },
+  "pipeline.doc.uploadReceiptLabel": { fr: "Charger le justificatif de paiement", en: "Upload the payment receipt" },
+  "pipeline.doc.awaitingBoth": {
+    fr: "En attente du contrat et/ou du justificatif de paiement avant de pouvoir confirmer la place.",
+    en: "Waiting on the contract and/or payment receipt before the seat can be confirmed.",
   },
 
   // Engineering section (explant analysis / test platform / equipment rental)

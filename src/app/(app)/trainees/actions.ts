@@ -158,13 +158,13 @@ export async function setNotInterested(leadId: string) {
  * reminders, records the optional reason as a comment, and logs an event.
  *
  * Admin-only. Idempotent: re-cancelling an already-cancelled trainee is a
- * no-op (the cancelled_at guard also prevents any double seat accounting if
- * that is added later). Deliberately does NOT touch money — per SOP the
- * deposit is not refunded on cancel and all deposit handling is manual/
- * external. Mirrors `setNotInterested`'s convention of not manipulating the
- * `trainings.enrolled` counter directly (that stays trigger-maintained on
- * stage changes); the trainee's stage is left as-is so their history reads
- * truthfully ("cancelled while confirmed", etc.).
+ * no-op (the cancelled_at guard also prevents double seat accounting).
+ * Deliberately does NOT touch money — per SOP the deposit is not refunded on
+ * cancel and all deposit handling is manual/external. Setting cancelled_at
+ * frees the seat automatically (trg_bump_enrolled recomputes trainings.
+ * enrolled off cancelled_at/interest, see db/seat_count_include_pending_leads.sql);
+ * the trainee's stage is left as-is so their history reads truthfully
+ * ("cancelled while confirmed", etc.).
  */
 export async function cancelRegistration(leadId: string, reason?: string) {
   const user = await getSessionUser();

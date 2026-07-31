@@ -297,6 +297,10 @@ const DICT = {
     fr: "Caution levée (exception) — aucun contrat signé requis. Cliquez pour confirmer cette étape.",
     en: "Deposit waived (exception) — no signed contract required. Click to confirm this step.",
   },
+  "pipeline.drawer.depositContractVerifyNote": {
+    fr: "Vérifiez les documents ci-dessous — cela avancera automatiquement vers l'étape suivante (infos pratiques).",
+    en: "Verify the documents below — this will automatically advance to the next step (practical info).",
+  },
   "pipeline.drawer.attendedConfirmed": { fr: "Présent · formation suivie", en: "Attended · training completed" },
   "pipeline.drawer.attendanceNotConfirmed": { fr: "Présence non confirmée", en: "Attendance not confirmed" },
   "pipeline.drawer.attendanceTitle": {
@@ -424,7 +428,7 @@ const DICT = {
   "pipeline.doc.pendingPill": { fr: "En attente de vérification", en: "Pending verification" },
   "pipeline.doc.nonePastStageText": { fr: "Aucun document en attente à ce stade.", en: "No document pending at this stage." },
   "pipeline.doc.viewSigned": { fr: "📄 Voir le document signé", en: "📄 View signed document" },
-  "pipeline.doc.verifyConfirm": { fr: "Vérifier & confirmer la place →", en: "Verify & confirm seat →" },
+  "pipeline.doc.verifyConfirm": { fr: "Vérifier & avancer →", en: "Verify & advance →" },
   "pipeline.doc.uploadButton": { fr: "Charger & marquer signé", en: "Upload & mark signed" },
   "pipeline.doc.onlineSigningNote": {
     fr: "La signature électronique en ligne (Documenso) s'attache ici automatiquement une fois n8n configuré.",

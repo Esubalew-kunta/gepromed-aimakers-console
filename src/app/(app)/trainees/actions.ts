@@ -396,7 +396,15 @@ export async function uploadDocument(
  * Staff confirms the caution/contrat step once they've checked both the
  * signed contract AND the payment-receipt screenshot are present — marks
  * every unverified document on the lead as verified in one pass (rather
- * than per-document), then confirms the seat (+ mock LMS handoff).
+ * than per-document), then advances ONE step forward (deposit_contract →
+ * practical_info), same as the normal per-stage checklist would.
+ *
+ * Previously this jumped straight to `confirmed`, silently skipping
+ * practical_info and elearning_sent (and their two emails) — a leftover
+ * from before the bootcamp pipeline had those granular stages. Fixed to
+ * follow resolveAdvance like every other transition, so this control and
+ * the generic checklist can never again disagree about what "confirm"
+ * does at this step.
  */
 export async function verifyAndConfirm(leadId: string) {
   const sb = supabaseServer();
@@ -407,22 +415,25 @@ export async function verifyAndConfirm(leadId: string) {
     .update({ verified: true, verified_at: now })
     .eq("lead_id", leadId)
     .eq("verified", false);
-  await sb
-    .from("leads")
-    .update({
-      stage: "confirmed",
-      confirmed_at: now,
-      lms_provisioned_at: now,
-      lms_user_id: `GLMS-${leadId.slice(0, 8).toUpperCase()}`,
-    })
-    .eq("id", leadId);
   await logEvent(leadId, "document:verified", {});
-  // Confirming the seat is a stage change → n8n sends the confirmation email.
-  const { data: p } = await sb.from("leads").select("parcours").eq("id", leadId).single();
-  await logEvent(leadId, "stage:confirmed", {
-    from: "deposit_contract",
-    parcours: (p?.parcours as Parcours) ?? "bootcamp",
-  });
+
+  const { data: lead } = await sb
+    .from("leads")
+    .select("stage, parcours")
+    .eq("id", leadId)
+    .single();
+  if (!lead) return;
+  const parcours = (lead.parcours as Parcours) ?? "bootcamp";
+  const current = lead.stage as Stage;
+  const next = resolveAdvance(parcours, current);
+  if (!next) return;
+
+  const patch: Record<string, unknown> = { stage: next };
+  const tsCol = STAGE_TS[next];
+  if (tsCol) patch[tsCol] = now;
+  await sb.from("leads").update(patch).eq("id", leadId);
+  // This stage change is what n8n listens on to send the next-step email.
+  await logEvent(leadId, `stage:${next}`, { from: current, parcours });
   revalidatePath("/trainees");
 }
 

@@ -83,6 +83,40 @@ const INTEREST_KEY: Record<InterestLevel, DictKey> = {
 const fmtDay = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "";
 
+const fmtDayTime = (iso?: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString("fr-FR", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+/** Human label for each email template key, so the communications timeline
+ * reads as "what was sent" instead of a raw notification_templates.key. */
+const EMAIL_TEMPLATE_LABEL: Record<string, string> = {
+  "trainee.bootcamp.request_received": "Accusé de réception de la demande",
+  "trainee.bootcamp.prerequisites": "Vérification de l'éligibilité",
+  "trainee.bootcamp.eligibility_failed": "Éligibilité non retenue",
+  "trainee.bootcamp.registration": "Contrat & caution demandés",
+  "trainee.bootcamp.relance": "Rappel — caution et contrat",
+  "trainee.bootcamp.confirmation": "Caution & contrat reçus",
+  "trainee.bootcamp.practical_info": "Informations pratiques envoyées",
+  "trainee.bootcamp.elearning": "Accès e-learning envoyé",
+  "trainee.bootcamp.elearning_relance": "Rappel — e-learning",
+  "trainee.bootcamp.confirmed": "Place confirmée",
+  "trainee.bootcamp.deposit_refunded": "Caution remboursée",
+  "trainee.bootcamp.end_survey": "Clôture & enquête de satisfaction",
+  "trainee.hms.enrollment_request": "Accusé de réception de la demande",
+  "trainee.hms.date_proposals": "Propositions de dates",
+  "trainee.hms.confirmation": "Facture émise",
+  "trainee.hms.practical_info": "Bienvenue & informations pratiques",
+  "trainee.hms.credentials": "Identifiants simulateur envoyés",
+  "trainee.hms.confirmed": "Formation confirmée",
+  "trainee.hms.satisfaction": "Questionnaire de satisfaction",
+};
+
 const euro = (n?: number) => "€" + (n ?? 0).toLocaleString("fr-FR");
 
 function fmtRange(a?: string, b?: string) {
@@ -868,6 +902,15 @@ function LeadDrawer({
   // then there's no document to wait for, so a manual confirm applies.
   const isDepositDocGate =
     parcours === "bootcamp" && lead.stage === "pre_registration" && !isSponsored;
+  // deposit_contract is ALSO a document-driven step now (DocState's "Vérifier
+  // & confirmer" advances it once both docs are verified) — the generic
+  // checklist button used to render here too, giving staff two contradictory
+  // ways to advance the same stage (one linear, one skipping two stages).
+  // Suppressed the same way pré-inscription is, so DocState is the only
+  // advance control while documents are still pending review.
+  const isDocVerifyGate =
+    isDepositDocGate ||
+    (parcours === "bootcamp" && lead.stage === "deposit_contract" && !isSponsored);
   const hasSignedDocument = (lead.documents?.length ?? 0) > 0;
   const advanceEnabled = isElearningGate
     ? lead.elearning_completed
@@ -1099,7 +1142,11 @@ function LeadDrawer({
                       ? t("pipeline.drawer.depositDocReceivedNote")
                       : t("pipeline.drawer.depositDocAwaitingNote")}
                 </p>
-              ) : !isEligibilityGate && !isElearningGate && advance ? (
+              ) : isDocVerifyGate && !lead.caution_waived ? (
+                <p className="mt-3 text-[12px] text-ink-500">
+                  {t("pipeline.drawer.depositContractVerifyNote")}
+                </p>
+              ) : !isEligibilityGate && !isElearningGate && !isDocVerifyGate && advance ? (
                 /* Confirmation checkbox for normal (non-gate) steps */
                 <label className="mt-3 flex items-start gap-2 text-[13px] text-ink-700">
                   <input
@@ -1137,9 +1184,9 @@ function LeadDrawer({
                       {t("pipeline.drawer.eligibilityNotOk")}
                     </button>
                   </>
-                ) : isDepositDocGate && !lead.caution_waived ? null : /* No manual
-                    advance here — uploading the signed document (below) is
-                    what confirms this step and moves the stage; the status
+                ) : isDocVerifyGate && !lead.caution_waived ? null : /* No manual
+                    advance here — uploading + verifying the documents (below)
+                    is what confirms this step and moves the stage; the status
                     note above already explains why. */
                 advance ? (
                   <button
@@ -1410,44 +1457,61 @@ function LeadDrawer({
           </>
         ) : null}
 
-        {/* Communications — the emails fired on each stage transition */}
+        {/* Communications — the emails fired on each stage transition. Sent
+            to lead.email in every row, so that's stated once in the section
+            header instead of repeated per row; each row's icon color already
+            carries the sent/failed/queued state, so a same-meaning text pill
+            only appears for the exceptions (failed/queued), not for the
+            expected "sent" case. */}
         <div className="border-b border-ink-100 px-6 py-5">
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-ink-400">
-            {t("pipeline.drawer.communications")}
-          </p>
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">
+              {t("pipeline.drawer.communications")}
+            </p>
+            {emails.length > 0 ? (
+              <p className="truncate text-[11px] text-ink-400">{lead.email}</p>
+            ) : null}
+          </div>
           {emails.length === 0 ? (
             <p className="text-[13px] text-ink-400">
               {t("pipeline.drawer.noEmailsYet")}
             </p>
           ) : (
-            <div className="space-y-2">
-              {emails.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex items-center gap-3 rounded-lg border border-ink-100 bg-ink-50 px-3 py-2"
-                >
-                  <Icon name="mail" className="h-4 w-4 text-brand-500" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12.5px] font-medium text-ink-800">
-                      {e.template ?? "email"}
-                    </p>
-                    <p className="text-[11px] text-ink-400">
-                      {e.to_email} · {fmtDay(e.sent_at)}
-                    </p>
+            <div className="space-y-1.5">
+              {emails.map((e) => {
+                const tone =
+                  e.status === "failed" ? "red" : e.status === "sent" ? "emerald" : "amber";
+                return (
+                  <div key={e.id} className="flex items-center gap-3 py-1.5">
+                    <div
+                      className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${
+                        tone === "emerald"
+                          ? "bg-emerald-50 text-emerald-600"
+                          : tone === "red"
+                            ? "bg-red-50 text-red-600"
+                            : "bg-amber-50 text-amber-600"
+                      }`}
+                    >
+                      <Icon name={tone === "red" ? "alert-triangle" : "mail"} className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium text-ink-800">
+                        {EMAIL_TEMPLATE_LABEL[e.template ?? ""] ?? e.template ?? "Email"}
+                      </p>
+                      <p className="text-[11px] text-ink-400">{fmtDayTime(e.sent_at)}</p>
+                    </div>
+                    {tone !== "emerald" ? (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          tone === "red" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {e.status ?? "queued"}
+                      </span>
+                    ) : null}
                   </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      e.status === "sent"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : e.status === "failed"
-                          ? "bg-red-50 text-red-700"
-                          : "bg-amber-50 text-amber-700"
-                    }`}
-                  >
-                    {e.status ?? "queued"}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

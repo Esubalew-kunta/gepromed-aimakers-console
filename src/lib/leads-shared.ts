@@ -138,12 +138,12 @@ const HELPMESEE_STAGE_SHORT: Record<HelpMeSeeStage, string> = {
 const BOOTCAMP_STAGE_SHORT: Record<BootcampStage, string> = {
   lead: "À suivre",
   prerequisites: "Prérequis",
-  pre_registration: "Pré-insc.",
-  deposit_contract: "Caution",
-  practical_info: "Infos",
+  pre_registration: "Pré-inscription",
+  deposit_contract: "Caution & contrat",
+  practical_info: "Infos pratiques",
   elearning_sent: "E-learning",
   confirmed: "Confirmé",
-  deposit_refunded: "Remb.",
+  deposit_refunded: "Remboursement",
   done: "Terminé",
 };
 

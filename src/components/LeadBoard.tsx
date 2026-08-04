@@ -44,6 +44,8 @@ import {
 import type { ContractTemplate } from "@/lib/contracts-shared";
 import { useT, useLang, type Lang, type DictKey } from "@/lib/i18n";
 import { validateDocumentFile } from "@/lib/file-validation";
+import { Pagination } from "./Pagination";
+import { usePagination } from "@/lib/use-pagination";
 
 /** Which stage timestamp field on a Lead corresponds to each stage id. */
 const STAGE_TS_FIELD: Record<Stage, keyof Lead | null> = {
@@ -487,6 +489,18 @@ export function LeadBoard({
     onVisibleChange?.(visible);
   }, [visible, onVisibleChange]);
 
+  const {
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    pageCount,
+    pageItems: pageLeads,
+    total,
+    startIndex,
+    endIndex,
+  } = usePagination(visible);
+
   return (
     <div>
       {/* Toolbar */}
@@ -555,66 +569,87 @@ export function LeadBoard({
               ) : null}
             </button>
             {showFilters ? (
-              <div className="absolute right-0 z-30 mt-2 w-72 space-y-3 rounded-xl border border-ink-100 bg-white p-4 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wide text-ink-400">
-                    {t("pipeline.filters")}
-                  </span>
+              <div className="absolute right-0 z-30 mt-2 w-[min(30rem,92vw)] overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-2xl ring-1 ring-black/5">
+                <div className="flex items-center justify-between border-b border-ink-100 bg-ink-50/60 px-5 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600/10 text-brand-600">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path d="M4 5h16M7 12h10M10 19h4" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <span className="text-sm font-semibold text-ink-900">
+                      {t("pipeline.filters")}
+                    </span>
+                    {activeFilters > 0 ? (
+                      <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                        {activeFilters}
+                      </span>
+                    ) : null}
+                  </div>
                   {activeFilters > 0 ? (
-                    <button onClick={clearFilters} className="text-xs font-medium text-brand-600 hover:underline">
+                    <button
+                      onClick={clearFilters}
+                      className="rounded-lg px-2 py-1 text-xs font-medium text-ink-500 transition hover:bg-white hover:text-red-600"
+                    >
                       {t("pipeline.clearAll")}
                     </button>
                   ) : null}
                 </div>
-                <FilterRow label={t("pipeline.filterSession")}>
-                  <select value={fSession} onChange={(e) => setFSession(e.target.value)} className="input">
-                    <option value="">{t("pipeline.filterAllSessions")}</option>
-                    {sessions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title}
-                      </option>
-                    ))}
-                  </select>
-                </FilterRow>
-                <FilterRow label={t("pipeline.filterInterest")}>
-                  <select value={fInterest} onChange={(e) => setFInterest(e.target.value)} className="input">
-                    <option value="">{t("pipeline.filterAll")}</option>
-                    {INTEREST_LEVELS.map((i) => (
-                      <option key={i} value={i}>
-                        {t(INTEREST_KEY[i])}
-                      </option>
-                    ))}
-                  </select>
-                </FilterRow>
-                <FilterRow label={t("pipeline.filterReminders")}>
-                  <select value={fReminders} onChange={(e) => setFReminders(e.target.value)} className="input">
-                    <option value="">{t("pipeline.filterAll")}</option>
-                    <option value="on">{t("pipeline.filterOn")}</option>
-                    <option value="off">{t("pipeline.filterOff")}</option>
-                  </select>
-                </FilterRow>
-                <FilterRow label={t("pipeline.filterSignedDoc")}>
-                  <select value={fDocStatus} onChange={(e) => setFDocStatus(e.target.value)} className="input">
-                    <option value="">{t("pipeline.filterAll")}</option>
-                    <option value="pending">{t("pipeline.filterPending")}</option>
-                    <option value="verified">{t("pipeline.filterVerified")}</option>
-                    <option value="none">{t("pipeline.filterNoDoc")}</option>
-                  </select>
-                </FilterRow>
-                <FilterRow label={t("pipeline.filterAccommodation")}>
-                  <select value={fAccommodation} onChange={(e) => setFAccommodation(e.target.value)} className="input">
-                    <option value="">{t("pipeline.filterAll")}</option>
-                    <option value="yes">{t("pipeline.filterNeeded")}</option>
-                    <option value="no">{t("pipeline.filterNotNeeded")}</option>
-                  </select>
-                </FilterRow>
-                <FilterRow label={t("pipeline.filterElearning")}>
-                  <select value={fElearning} onChange={(e) => setFElearning(e.target.value)} className="input">
-                    <option value="">{t("pipeline.filterAll")}</option>
-                    <option value="yes">{t("pipeline.filterEnabled")}</option>
-                    <option value="no">{t("pipeline.filterDisabled")}</option>
-                  </select>
-                </FilterRow>
+
+                <div className="grid grid-cols-2 gap-4 p-5">
+                  <FilterRow label={t("pipeline.filterSession")} icon="graduation-cap" className="col-span-2">
+                    <select value={fSession} onChange={(e) => setFSession(e.target.value)} className="input">
+                      <option value="">{t("pipeline.filterAllSessions")}</option>
+                      {sessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.title}
+                        </option>
+                      ))}
+                    </select>
+                  </FilterRow>
+                  <FilterRow label={t("pipeline.filterInterest")} icon="activity" className="col-span-2">
+                    <select value={fInterest} onChange={(e) => setFInterest(e.target.value)} className="input">
+                      <option value="">{t("pipeline.filterAll")}</option>
+                      {INTEREST_LEVELS.map((i) => (
+                        <option key={i} value={i}>
+                          {t(INTEREST_KEY[i])}
+                        </option>
+                      ))}
+                    </select>
+                  </FilterRow>
+
+                  <div className="col-span-2 border-t border-ink-100 pt-4" />
+
+                  <FilterRow label={t("pipeline.filterReminders")} icon="mail">
+                    <select value={fReminders} onChange={(e) => setFReminders(e.target.value)} className="input">
+                      <option value="">{t("pipeline.filterAll")}</option>
+                      <option value="on">{t("pipeline.filterOn")}</option>
+                      <option value="off">{t("pipeline.filterOff")}</option>
+                    </select>
+                  </FilterRow>
+                  <FilterRow label={t("pipeline.filterSignedDoc")} icon="clipboard-check">
+                    <select value={fDocStatus} onChange={(e) => setFDocStatus(e.target.value)} className="input">
+                      <option value="">{t("pipeline.filterAll")}</option>
+                      <option value="pending">{t("pipeline.filterPending")}</option>
+                      <option value="verified">{t("pipeline.filterVerified")}</option>
+                      <option value="none">{t("pipeline.filterNoDoc")}</option>
+                    </select>
+                  </FilterRow>
+                  <FilterRow label={t("pipeline.filterAccommodation")} icon="home">
+                    <select value={fAccommodation} onChange={(e) => setFAccommodation(e.target.value)} className="input">
+                      <option value="">{t("pipeline.filterAll")}</option>
+                      <option value="yes">{t("pipeline.filterNeeded")}</option>
+                      <option value="no">{t("pipeline.filterNotNeeded")}</option>
+                    </select>
+                  </FilterRow>
+                  <FilterRow label={t("pipeline.filterElearning")} icon="book">
+                    <select value={fElearning} onChange={(e) => setFElearning(e.target.value)} className="input">
+                      <option value="">{t("pipeline.filterAll")}</option>
+                      <option value="yes">{t("pipeline.filterEnabled")}</option>
+                      <option value="no">{t("pipeline.filterDisabled")}</option>
+                    </select>
+                  </FilterRow>
+                </div>
               </div>
             ) : null}
           </div>
@@ -664,13 +699,14 @@ export function LeadBoard({
           })}
         </span>
       </div>
-      <div className="card max-h-[60vh] min-h-[160px] overflow-y-auto">
+      <div className="card min-h-[160px] overflow-hidden p-0">
+        <div className="max-h-[60vh] overflow-y-auto">
         {leads.length === 0 ? (
           <p className="p-10 text-center text-ink-400">{t("pipeline.emptyGlobal")}</p>
         ) : visible.length === 0 ? (
           <p className="p-10 text-center text-ink-400">{t("pipeline.emptyFiltered")}</p>
         ) : (
-          visible.map((l, i) => (
+          pageLeads.map((l, i) => (
             <div
               key={l.id}
               role="button"
@@ -756,6 +792,19 @@ export function LeadBoard({
               </div>
             </div>
           ))
+        )}
+        </div>
+        {visible.length > 0 && (
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={total}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
 
@@ -1577,14 +1626,19 @@ function LeadDrawer({
 
 function FilterRow({
   label,
+  icon,
+  className,
   children,
 }: {
   label: string;
+  icon?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="mb-1 block text-[11px] font-medium text-ink-500">
+    <div className={className}>
+      <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+        {icon ? <Icon name={icon} className="h-3 w-3 text-ink-400" /> : null}
         {label}
       </label>
       {children}

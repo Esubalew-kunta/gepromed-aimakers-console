@@ -37,3 +37,11 @@ yarn-error.log*
 
 # Local Claude Code tooling
 .claude/
+
+# docs: keep only README + onboarding tracked, ignore working/planning notes.
+# skills/**/*.md is product content (source for build-skills-sql.mjs), not
+# documentation — never ignore it.
+*.md
+!README.md
+!ONBOARDING.md
+!skills/**/*.md

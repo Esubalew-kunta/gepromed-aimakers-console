@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
+import { validateDocumentFile } from "@/lib/file-validation";
 import {
   resolveAdvance,
   type Stage,
@@ -362,7 +363,9 @@ export async function uploadDocument(
   const sb = supabaseServer();
   if (!sb) return { error: "Supabase not configured." };
   const file = fd.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file to upload." };
+  if (!(file instanceof File)) return { error: "Choose a file to upload." };
+  const fileError = validateDocumentFile(file);
+  if (fileError) return { error: fileError };
 
   const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
   const path = `${leadId}/${kind}-${Date.now()}.${ext}`;

@@ -43,6 +43,7 @@ import {
 } from "@/app/(app)/trainees/actions";
 import type { ContractTemplate } from "@/lib/contracts-shared";
 import { useT, useLang, type Lang, type DictKey } from "@/lib/i18n";
+import { validateDocumentFile } from "@/lib/file-validation";
 
 /** Which stage timestamp field on a Lead corresponds to each stage id. */
 const STAGE_TS_FIELD: Record<Stage, keyof Lead | null> = {
@@ -1676,7 +1677,20 @@ function DocTile({
             <input
               type="file"
               accept="application/pdf,image/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f) {
+                  const fileError = validateDocumentFile(f);
+                  if (fileError) {
+                    setErr(fileError);
+                    setFile(null);
+                    e.target.value = "";
+                    return;
+                  }
+                }
+                setErr("");
+                setFile(f);
+              }}
               className="text-xs text-ink-600 file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-brand-700"
             />
             <button

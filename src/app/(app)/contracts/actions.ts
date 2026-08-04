@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
+import { validateDocumentFile } from "@/lib/file-validation";
 
 export interface ContractFormState {
   error?: string;
@@ -28,7 +29,9 @@ export async function uploadTemplate(
   const name = String(fd.get("name") || "").trim();
   if (!name) return { error: "Give the template a name." };
   const file = fd.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
+  if (!(file instanceof File)) return { error: "Choose a file." };
+  const fileError = validateDocumentFile(file);
+  if (fileError) return { error: fileError };
   const makeDefault = fd.get("is_default") != null;
   // Courses (training ids) this contract covers → drives the auto-match.
   const courseIds = fd.getAll("course_ids").map(String).filter(Boolean);

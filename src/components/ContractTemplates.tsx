@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   uploadTemplate,
@@ -9,6 +9,7 @@ import {
   type ContractFormState,
 } from "@/app/(app)/contracts/actions";
 import type { ContractTemplate } from "@/lib/contracts-shared";
+import { validateDocumentFile } from "@/lib/file-validation";
 
 export function ContractTemplates({
   templates,
@@ -25,6 +26,7 @@ export function ContractTemplates({
     uploadTemplate,
     {},
   );
+  const [fileError, setFileError] = useState("");
   const [busy, start] = useTransition();
   const router = useRouter();
   const run = (fn: () => Promise<unknown>) =>
@@ -50,8 +52,21 @@ export function ContractTemplates({
               name="file"
               accept="application/pdf,image/*"
               required
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f) {
+                  const err = validateDocumentFile(f);
+                  if (err) {
+                    setFileError(err);
+                    e.target.value = "";
+                    return;
+                  }
+                }
+                setFileError("");
+              }}
               className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700"
             />
+            {fileError ? <p className="mt-1 text-xs text-red-600">{fileError}</p> : null}
           </div>
         </div>
         <div>

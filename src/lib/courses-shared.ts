@@ -68,6 +68,10 @@ export interface Course {
    * training detail page (PhotoGallery). Empty array when none uploaded. */
   photos: string[];
   status: string;
+  /** Draft/publish gate — enforced at the RLS layer (trainings_public_read),
+   * not just a UI convention. A new course always starts unpublished; an
+   * admin must explicitly publish it before it's visible on the public site. */
+  is_published: boolean;
   image_url: string | null;
   // Qualiopi fields (public training detail pages). All optional so existing
   // seed/DB rows keep compiling and Supabase rows without these columns still map.

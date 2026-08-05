@@ -6,6 +6,8 @@ import { SponsorPicker } from "./SponsorPicker";
 import {
   saveCourse,
   deleteCourse,
+  publishCourse,
+  unpublishCourse,
   type CourseFormState,
 } from "@/app/(app)/courses/actions";
 import {
@@ -29,6 +31,8 @@ export function CourseForm({ course }: { course?: Course }) {
     {},
   );
   const [deleting, startDelete] = useTransition();
+  const [publishing, startPublish] = useTransition();
+  const [publishError, setPublishError] = useState("");
   const router = useRouter();
   const editing = Boolean(course);
 
@@ -49,6 +53,74 @@ export function CourseForm({ course }: { course?: Course }) {
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
 
   return (
+    <div className="space-y-5">
+      {editing ? (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
+            course!.is_published
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-amber-200 bg-amber-50"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                course!.is_published ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {course!.is_published ? "✓" : "●"}
+            </span>
+            <div>
+              <p className={`text-sm font-semibold ${course!.is_published ? "text-emerald-800" : "text-amber-800"}`}>
+                {course!.is_published ? "Published" : "Draft"}
+              </p>
+              <p className={`text-xs ${course!.is_published ? "text-emerald-700" : "text-amber-700"}`}>
+                {course!.is_published
+                  ? "Live on the public site."
+                  : "Not visible on the public site yet."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {publishError ? <span className="text-xs font-medium text-red-600">{publishError}</span> : null}
+            <button
+              type="button"
+              disabled={publishing}
+              onClick={() =>
+                startPublish(async () => {
+                  setPublishError("");
+                  const fn = course!.is_published ? unpublishCourse : publishCourse;
+                  const res = await fn(course!.slug);
+                  if (res.error) setPublishError(res.error);
+                  else router.refresh();
+                })
+              }
+              className={
+                course!.is_published
+                  ? "rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                  : "btn-primary"
+              }
+            >
+              {publishing
+                ? "Working…"
+                : course!.is_published
+                  ? "Unpublish"
+                  : "Publish"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2.5 rounded-xl border border-ink-200 bg-ink-50 px-4 py-3 text-sm text-ink-600">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-100 text-ink-500">
+            ●
+          </span>
+          <p>
+            New courses are saved as a <span className="font-semibold">draft</span> — invisible on the
+            public site until you publish it from here or the course list.
+          </p>
+        </div>
+      )}
+
     <form action={action} className="space-y-5">
       {course ? <input type="hidden" name="__slug" value={course.slug} /> : null}
       <input type="hidden" name="objectives" value={JSON.stringify(objectives)} />
@@ -574,6 +646,7 @@ export function CourseForm({ course }: { course?: Course }) {
         ) : null}
       </div>
     </form>
+    </div>
   );
 }
 

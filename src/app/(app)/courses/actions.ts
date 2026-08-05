@@ -239,11 +239,17 @@ export async function saveCourse(
   };
 
   if (editingSlug) {
+    // is_published is deliberately never in `payload` here — publishing is
+    // its own explicit action (publishCourse/unpublishCourse below), so an
+    // unrelated field edit can never silently flip a draft live or vice versa.
     const { error } = await sb.from("trainings").update(payload).eq("slug", editingSlug);
     if (error) return { error: error.message };
   } else {
     const slug = `${slugify(titleFr)}-${(start || "2026-01").slice(0, 7)}`;
-    const { error } = await sb.from("trainings").insert({ ...payload, slug });
+    // Every new course starts as a draft — invisible on the public site
+    // (enforced by the trainings_public_read RLS policy, not just this
+    // default) until an admin explicitly publishes it.
+    const { error } = await sb.from("trainings").insert({ ...payload, slug, is_published: false });
     if (error) return { error: error.message };
   }
 
@@ -291,4 +297,31 @@ export async function deleteCourse(slug: string): Promise<void> {
 
   revalidatePath("/courses");
   redirect("/courses");
+}
+
+/** Makes a draft course visible on the public site (RLS-enforced — see
+ * trainings_public_read in db/course_draft_publish.sql). Returns rather
+ * than redirects: called from the board's row-level action, not a form. */
+export async function publishCourse(slug: string): Promise<{ error?: string }> {
+  const user = await getSessionUser();
+  if (!user) return { error: "Please sign in again." };
+  const sb = supabaseServer();
+  if (!sb) return { error: "Supabase is not configured." };
+  const { error } = await sb.from("trainings").update({ is_published: true }).eq("slug", slug);
+  if (error) return { error: error.message };
+  revalidatePath("/courses");
+  return {};
+}
+
+/** Pulls a published course back to draft — hidden from the public site
+ * again, nothing else about it changes. */
+export async function unpublishCourse(slug: string): Promise<{ error?: string }> {
+  const user = await getSessionUser();
+  if (!user) return { error: "Please sign in again." };
+  const sb = supabaseServer();
+  if (!sb) return { error: "Supabase is not configured." };
+  const { error } = await sb.from("trainings").update({ is_published: false }).eq("slug", slug);
+  if (error) return { error: error.message };
+  revalidatePath("/courses");
+  return {};
 }

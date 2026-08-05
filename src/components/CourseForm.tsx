@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SponsorPicker } from "./SponsorPicker";
 import {
@@ -41,6 +41,12 @@ export function CourseForm({ course }: { course?: Course }) {
   );
   const [isSponsored, setIsSponsored] = useState(course?.is_sponsored ?? false);
   const [sponsors, setSponsors] = useState<Sponsor[]>(course?.sponsors ?? []);
+  // Past-session gallery: `keptPhotos` are existing URLs the admin hasn't
+  // removed (submitted as photos_existing); `newPhotos` are freshly picked
+  // files, previewed locally and uploaded on submit via the `gallery_photos`
+  // file input.
+  const [keptPhotos, setKeptPhotos] = useState<string[]>(course?.photos ?? []);
+  const [newPhotos, setNewPhotos] = useState<File[]>([]);
 
   return (
     <form action={action} className="space-y-5">
@@ -51,6 +57,7 @@ export function CourseForm({ course }: { course?: Course }) {
       <input type="hidden" name="target_audience" value={JSON.stringify(audienceTags)} />
       <input type="hidden" name="image_url_existing" value={course?.image_url ?? ""} />
       <input type="hidden" name="sponsors" value={JSON.stringify(isSponsored ? sponsors : [])} />
+      <input type="hidden" name="photos_existing" value={JSON.stringify(keptPhotos)} />
 
       {/* Basics */}
       <section className="card space-y-4 p-6">
@@ -526,17 +533,21 @@ export function CourseForm({ course }: { course?: Course }) {
         <h2 className="text-sm font-semibold text-ink-900">
           Session proof <span className="font-normal text-ink-400">(past sessions only)</span>
         </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Satisfaction %">
             <input type="number" name="satisfaction" defaultValue={course?.satisfaction ?? ""} className="input" />
           </Field>
           <Field label="Pass rate %">
             <input type="number" name="pass_rate" defaultValue={course?.pass_rate ?? ""} className="input" />
           </Field>
-          <Field label="Photos count">
-            <input type="number" name="photos" defaultValue={course?.photos ?? ""} className="input" />
-          </Field>
         </div>
+        <PhotoGalleryField
+          keptPhotos={keptPhotos}
+          onRemoveKept={(url) => setKeptPhotos((p) => p.filter((u) => u !== url))}
+          newPhotos={newPhotos}
+          onAddNew={(files) => setNewPhotos((p) => [...p, ...files])}
+          onRemoveNew={(i) => setNewPhotos((p) => p.filter((_, j) => j !== i))}
+        />
       </section>
 
       {state.error ? (
@@ -563,6 +574,102 @@ export function CourseForm({ course }: { course?: Course }) {
         ) : null}
       </div>
     </form>
+  );
+}
+
+/**
+ * Past-session photo gallery: shows already-uploaded photos (removable) plus
+ * thumbnails of newly picked, not-yet-uploaded files (also removable before
+ * submit), and a picker to add more. Files are added across possibly several
+ * separate picks, so a plain `<input type="file" multiple>` bound straight to
+ * the form won't work — its `.files` only ever holds the LAST selection. A
+ * hidden input's `.files` is instead synced from the accumulated `newPhotos`
+ * state via a DataTransfer, so the actual form submission carries everything
+ * picked so far, added in one go or several.
+ */
+function PhotoGalleryField({
+  keptPhotos,
+  onRemoveKept,
+  newPhotos,
+  onAddNew,
+  onRemoveNew,
+}: {
+  keptPhotos: string[];
+  onRemoveKept: (url: string) => void;
+  newPhotos: File[];
+  onAddNew: (files: File[]) => void;
+  onRemoveNew: (index: number) => void;
+}) {
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const dt = new DataTransfer();
+    for (const f of newPhotos) dt.items.add(f);
+    if (hiddenInputRef.current) hiddenInputRef.current.files = dt.files;
+  }, [newPhotos]);
+
+  return (
+    <div>
+      <label className="label">Photo gallery</label>
+      <p className="mb-2 text-xs text-ink-400">
+        Shown on the public site&apos;s training detail page once the session has
+        happened. JPEG, PNG or WEBP.
+      </p>
+
+      {keptPhotos.length > 0 || newPhotos.length > 0 ? (
+        <div className="mb-3 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+          {keptPhotos.map((url) => (
+            <div key={url} className="group relative aspect-square overflow-hidden rounded-lg border border-ink-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => onRemoveKept(url)}
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-ink-900/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label="Remove photo"
+                title="Remove photo"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {newPhotos.map((f, i) => (
+            <div key={`${f.name}-${i}`} className="group relative aspect-square overflow-hidden rounded-lg border border-brand-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={URL.createObjectURL(f)} alt="" className="h-full w-full object-cover" />
+              <span className="absolute left-1 top-1 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                new
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemoveNew(i)}
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-ink-900/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label="Remove photo"
+                title="Remove photo"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <input
+        ref={pickerRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) onAddNew(files);
+          if (pickerRef.current) pickerRef.current.value = "";
+        }}
+        className="block text-sm text-ink-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
+      />
+      {/* Actually submitted with the form; kept in sync with newPhotos above. */}
+      <input ref={hiddenInputRef} type="file" name="gallery_photos" multiple className="hidden" />
+    </div>
   );
 }
 

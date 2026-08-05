@@ -27,3 +27,18 @@ export function validateDocumentFile(file: File): string | null {
   }
   return null;
 }
+
+export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+
+/** Same rules as validateDocumentFile but image-only (cover image, gallery
+ * photos) — a PDF is a valid document but never a valid photo. */
+export function validateImageFile(file: File): string | null {
+  if (file.size === 0) return "The selected file is empty.";
+  if (file.size > MAX_DOCUMENT_BYTES) {
+    return `File is too large (max ${MAX_DOCUMENT_BYTES / (1024 * 1024)} MB).`;
+  }
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
+    return "Unsupported file type. Please upload a JPEG, PNG or WEBP image.";
+  }
+  return null;
+}

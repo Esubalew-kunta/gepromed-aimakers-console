@@ -64,7 +64,9 @@ export interface Course {
   supervisors: Supervisor[];
   satisfaction: number | null;
   pass_rate: number | null;
-  photos: number | null;
+  /** Past-session gallery — public image URLs, rendered on the public site's
+   * training detail page (PhotoGallery). Empty array when none uploaded. */
+  photos: string[];
   status: string;
   image_url: string | null;
   // Qualiopi fields (public training detail pages). All optional so existing

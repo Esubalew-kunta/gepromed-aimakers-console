@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
+import { validateImageFile } from "@/lib/file-validation";
 
 export interface CourseFormState {
   error?: string;
@@ -60,6 +61,8 @@ export async function saveCourse(
   let image_url: string | null = str(fd, "image_url_existing") || null;
   const file = fd.get("image");
   if (file instanceof File && file.size > 0) {
+    const fileError = validateImageFile(file);
+    if (fileError) return { error: fileError };
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
     const path = `course-${Date.now()}.${ext}`;
     const { error: upErr } = await sb.storage
@@ -67,6 +70,32 @@ export async function saveCourse(
       .upload(path, file, { contentType: file.type, upsert: true });
     if (upErr) return { error: `Image upload failed: ${upErr.message}` };
     image_url = sb.storage.from("course-images").getPublicUrl(path).data.publicUrl;
+  }
+
+  // Past-session gallery: keep whichever existing URLs the admin didn't
+  // remove (reported back via photos_existing, same keep/drop pattern as
+  // the cover image above), then append any newly uploaded files.
+  let photos: string[] = [];
+  try {
+    const kept = JSON.parse(str(fd, "photos_existing") || "[]");
+    if (Array.isArray(kept)) photos = kept.filter((u) => typeof u === "string");
+  } catch {
+    photos = [];
+  }
+  const gallerySlug = str(fd, "__slug") || slugify(titleFr);
+  const newPhotoFiles = fd.getAll("gallery_photos").filter(
+    (f): f is File => f instanceof File && f.size > 0,
+  );
+  for (const [i, f] of newPhotoFiles.entries()) {
+    const fileError = validateImageFile(f);
+    if (fileError) return { error: `Photo ${i + 1}: ${fileError}` };
+    const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `gallery/${gallerySlug}/${Date.now()}-${i}.${ext}`;
+    const { error: galErr } = await sb.storage
+      .from("course-images")
+      .upload(path, f, { contentType: f.type, upsert: true });
+    if (galErr) return { error: `Photo upload failed: ${galErr.message}` };
+    photos.push(sb.storage.from("course-images").getPublicUrl(path).data.publicUrl);
   }
 
   // Program PDF workbook: one .xlsx per training, private bucket, read back
@@ -146,7 +175,7 @@ export async function saveCourse(
     supervisors,
     satisfaction: optNum(fd, "satisfaction"),
     pass_rate: optNum(fd, "pass_rate"),
-    photos: optNum(fd, "photos"),
+    photos,
     status: str(fd, "status") || "open",
   };
 

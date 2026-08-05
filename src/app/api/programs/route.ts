@@ -767,10 +767,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
   const { data: training } = await sb
     .from("trainings")
-    .select("program_workbook_path")
+    .select("program_workbook_path, is_published")
     .eq("slug", slug)
     .maybeSingle();
-  const path = training?.program_workbook_path as string | null | undefined;
+  // This route uses the service-role client (bypasses RLS) since it's
+  // called unauthenticated cross-origin, so trainings_public_read's
+  // is_published gate isn't applied automatically here — check it
+  // explicitly. Same generic "not found" as a missing workbook, not a
+  // distinct message, so a probe can't use this to tell "draft" apart
+  // from "genuinely doesn't exist".
+  const path =
+    training?.is_published
+      ? (training.program_workbook_path as string | null | undefined)
+      : null;
   if (!path) {
     return errorHtml(
       `Aucun programme disponible pour « ${slug} » — le classeur .xlsx n'a pas encore été téléversé par Gepromed.`,

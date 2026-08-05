@@ -577,6 +577,9 @@ export function CourseForm({ course }: { course?: Course }) {
   );
 }
 
+// Mirrors the server-side cap in courses/actions.ts — keep both in sync.
+const MAX_GALLERY_PHOTOS = 12;
+
 /**
  * Past-session photo gallery: shows already-uploaded photos (removable) plus
  * thumbnails of newly picked, not-yet-uploaded files (also removable before
@@ -602,6 +605,8 @@ function PhotoGalleryField({
 }) {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
+  const total = keptPhotos.length + newPhotos.length;
+  const remaining = MAX_GALLERY_PHOTOS - total;
 
   useEffect(() => {
     const dt = new DataTransfer();
@@ -614,7 +619,7 @@ function PhotoGalleryField({
       <label className="label">Photo gallery</label>
       <p className="mb-2 text-xs text-ink-400">
         Shown on the public site&apos;s training detail page once the session has
-        happened. JPEG, PNG or WEBP.
+        happened. JPEG, PNG or WEBP. {total}/{MAX_GALLERY_PHOTOS} photos.
       </p>
 
       {keptPhotos.length > 0 || newPhotos.length > 0 ? (
@@ -655,18 +660,24 @@ function PhotoGalleryField({
         </div>
       ) : null}
 
-      <input
-        ref={pickerRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        multiple
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          if (files.length) onAddNew(files);
-          if (pickerRef.current) pickerRef.current.value = "";
-        }}
-        className="block text-sm text-ink-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
-      />
+      {remaining > 0 ? (
+        <input
+          ref={pickerRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []).slice(0, remaining);
+            if (files.length) onAddNew(files);
+            if (pickerRef.current) pickerRef.current.value = "";
+          }}
+          className="block text-sm text-ink-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
+        />
+      ) : (
+        <p className="text-xs text-ink-400">
+          Limit reached — remove a photo to add another.
+        </p>
+      )}
       {/* Actually submitted with the form; kept in sync with newPhotos above. */}
       <input ref={hiddenInputRef} type="file" name="gallery_photos" multiple className="hidden" />
     </div>

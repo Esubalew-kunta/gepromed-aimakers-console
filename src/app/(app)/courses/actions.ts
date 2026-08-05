@@ -34,6 +34,38 @@ const optNum = (fd: FormData, k: string): number | null => {
   return Number.isFinite(v) ? v : null;
 };
 
+const MAX_GALLERY_PHOTOS = 12;
+
+/** course-images is a public bucket, so what we store is the full public
+ * URL — recover the bucket-relative path from it so we can pass it to
+ * storage.remove(). Returns null for anything that isn't actually a
+ * course-images URL (nothing to clean up). */
+function coursePhotoPath(url: string): string | null {
+  const marker = "/storage/v1/object/public/course-images/";
+  const i = url.indexOf(marker);
+  return i === -1 ? null : url.slice(i + marker.length);
+}
+
+/** Best-effort storage cleanup — never blocks or fails the caller. A
+ * leftover orphaned file is a minor storage-cost annoyance; failing a save
+ * or delete over it would be a much worse trade. */
+async function cleanupCourseStorage(
+  sb: ReturnType<typeof supabaseServer>,
+  files: { imageUrl?: string | null; photos?: string[]; workbookPath?: string | null },
+): Promise<void> {
+  if (!sb) return;
+  const imagePaths = [
+    ...(files.imageUrl ? [coursePhotoPath(files.imageUrl)] : []),
+    ...(files.photos ?? []).map(coursePhotoPath),
+  ].filter((p): p is string => Boolean(p));
+  if (imagePaths.length) {
+    await sb.storage.from("course-images").remove(imagePaths).catch(() => {});
+  }
+  if (files.workbookPath) {
+    await sb.storage.from("program-workbooks").remove([files.workbookPath]).catch(() => {});
+  }
+}
+
 export async function saveCourse(
   _prev: CourseFormState,
   fd: FormData,
@@ -45,6 +77,20 @@ export async function saveCourse(
 
   const titleFr = str(fd, "title_fr");
   if (!titleFr) return { error: "The French title is required." };
+
+  // Fetch the current stored files (if editing) up front, so replaced/
+  // removed cover image, gallery photos and workbook can be cleaned out of
+  // Storage after the save succeeds instead of being silently orphaned.
+  const editingSlug = str(fd, "__slug");
+  let oldFiles: { image_url: string | null; photos: string[] | null; program_workbook_path: string | null } | null = null;
+  if (editingSlug) {
+    const { data } = await sb
+      .from("trainings")
+      .select("image_url, photos, program_workbook_path")
+      .eq("slug", editingSlug)
+      .maybeSingle();
+    oldFiles = data ?? null;
+  }
 
   let objectives: unknown, program: unknown, supervisors: unknown, sponsors: unknown;
   try {
@@ -86,6 +132,9 @@ export async function saveCourse(
   const newPhotoFiles = fd.getAll("gallery_photos").filter(
     (f): f is File => f instanceof File && f.size > 0,
   );
+  if (photos.length + newPhotoFiles.length > MAX_GALLERY_PHOTOS) {
+    return { error: `Too many gallery photos (max ${MAX_GALLERY_PHOTOS}).` };
+  }
   for (const [i, f] of newPhotoFiles.entries()) {
     const fileError = validateImageFile(f);
     if (fileError) return { error: `Photo ${i + 1}: ${fileError}` };
@@ -189,7 +238,6 @@ export async function saveCourse(
     ...(program_workbook_path ? { program_workbook_path } : {}),
   };
 
-  const editingSlug = str(fd, "__slug");
   if (editingSlug) {
     const { error } = await sb.from("trainings").update(payload).eq("slug", editingSlug);
     if (error) return { error: error.message };
@@ -197,6 +245,22 @@ export async function saveCourse(
     const slug = `${slugify(titleFr)}-${(start || "2026-01").slice(0, 7)}`;
     const { error } = await sb.from("trainings").insert({ ...payload, slug });
     if (error) return { error: error.message };
+  }
+
+  // Save succeeded — now that nothing can roll it back, clean up whatever
+  // the old row referenced that this save just replaced or dropped: the
+  // previous cover image (if a new one was uploaded), removed gallery
+  // photos, and the previous workbook (if a new one was uploaded).
+  if (oldFiles) {
+    const removedPhotos = (oldFiles.photos ?? []).filter((u) => !photos.includes(u));
+    await cleanupCourseStorage(sb, {
+      imageUrl: image_url !== oldFiles.image_url ? oldFiles.image_url : null,
+      photos: removedPhotos,
+      workbookPath:
+        program_workbook_path && program_workbook_path !== oldFiles.program_workbook_path
+          ? oldFiles.program_workbook_path
+          : null,
+    });
   }
 
   revalidatePath("/courses");
@@ -208,7 +272,23 @@ export async function deleteCourse(slug: string): Promise<void> {
   if (!user) return;
   const sb = supabaseServer();
   if (!sb) return;
+
+  const { data: oldFiles } = await sb
+    .from("trainings")
+    .select("image_url, photos, program_workbook_path")
+    .eq("slug", slug)
+    .maybeSingle();
+
   await sb.from("trainings").delete().eq("slug", slug);
+
+  if (oldFiles) {
+    await cleanupCourseStorage(sb, {
+      imageUrl: oldFiles.image_url,
+      photos: oldFiles.photos ?? [],
+      workbookPath: oldFiles.program_workbook_path,
+    });
+  }
+
   revalidatePath("/courses");
   redirect("/courses");
 }

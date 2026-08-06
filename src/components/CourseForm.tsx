@@ -31,6 +31,7 @@ export function CourseForm({ course }: { course?: Course }) {
     {},
   );
   const [deleting, startDelete] = useTransition();
+  const [deleteError, setDeleteError] = useState("");
   const [publishing, startPublish] = useTransition();
   const [publishError, setPublishError] = useState("");
   const router = useRouter();
@@ -51,6 +52,22 @@ export function CourseForm({ course }: { course?: Course }) {
   // file input.
   const [keptPhotos, setKeptPhotos] = useState<string[]>(course?.photos ?? []);
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
+
+  // Duration stays a normal editable field on the backend (staff can still
+  // override it), but auto-fills from the date range so it starts correct
+  // instead of blank/stale — live data had several courses where a
+  // manually-typed duration had drifted from the actual start/end span.
+  const [startDate, setStartDate] = useState(course?.start_date ?? "");
+  const [endDate, setEndDate] = useState(course?.end_date ?? "");
+  const [duration, setDuration] = useState(course?.duration_days ?? 1);
+  useEffect(() => {
+    if (!startDate || !endDate) return;
+    const MS_PER_DAY = 86_400_000;
+    const s = new Date(`${startDate}T00:00:00Z`).getTime();
+    const e = new Date(`${endDate}T00:00:00Z`).getTime();
+    if (Number.isNaN(s) || Number.isNaN(e)) return;
+    setDuration(Math.max(1, Math.round((e - s) / MS_PER_DAY) + 1));
+  }, [startDate, endDate]);
 
   return (
     <div className="space-y-5">
@@ -167,7 +184,7 @@ export function CourseForm({ course }: { course?: Course }) {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="City">
-            <input name="city" defaultValue={course?.city} className="input" />
+            <input name="city" defaultValue={course?.city} required className="input" />
           </Field>
           <Field label="Qualiopi certified">
             <label className="flex items-center gap-2 pt-2 text-sm text-ink-600">
@@ -212,13 +229,34 @@ export function CourseForm({ course }: { course?: Course }) {
         <h2 className="text-sm font-semibold text-ink-900">Schedule &amp; pricing</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Start date">
-            <input type="date" name="start_date" defaultValue={course?.start_date} className="input" />
+            <input
+              type="date"
+              name="start_date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+              className="input"
+            />
           </Field>
           <Field label="End date">
-            <input type="date" name="end_date" defaultValue={course?.end_date} className="input" />
+            <input
+              type="date"
+              name="end_date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              required
+              className="input"
+            />
           </Field>
           <Field label="Duration (days)">
-            <input type="number" name="duration_days" defaultValue={course?.duration_days ?? 1} className="input" />
+            <input
+              type="number"
+              name="duration_days"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value) || 1)}
+              title="Auto-filled from the start/end dates — edit if the session isn't consecutive days."
+              className="input"
+            />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-4">
@@ -303,7 +341,17 @@ export function CourseForm({ course }: { course?: Course }) {
           />
           Sponsored by a third party (lab/company) — hides the price publicly
         </label>
-        {isSponsored ? <SponsorPicker value={sponsors} onChange={setSponsors} /> : null}
+        {isSponsored ? (
+          <>
+            <SponsorPicker value={sponsors} onChange={setSponsors} />
+            {sponsors.length === 0 ? (
+              <p className="text-xs font-medium text-amber-600">
+                Add at least one sponsor below, or this won&apos;t save — a sponsored course with no sponsor
+                shows a blank "Funded by" box publicly.
+              </p>
+            ) : null}
+          </>
+        ) : null}
       </section>
 
       {/* Qualiopi, public training detail fields */}
@@ -631,18 +679,26 @@ export function CourseForm({ course }: { course?: Course }) {
           {pending ? "Saving…" : editing ? "Save changes" : "Create course"}
         </button>
         {editing ? (
-          <button
-            type="button"
-            disabled={deleting}
-            onClick={() => {
-              if (confirm(`Delete "${course!.title.fr}"? This cannot be undone.`)) {
-                startDelete(() => deleteCourse(course!.slug).then(() => router.push("/courses")));
-              }
-            }}
-            className="rounded-xl px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-          >
-            {deleting ? "Deleting…" : "Delete course"}
-          </button>
+          <div className="flex items-center gap-2">
+            {deleteError ? <span className="text-xs font-medium text-red-600">{deleteError}</span> : null}
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => {
+                if (confirm(`Delete "${course!.title.fr}"? This cannot be undone.`)) {
+                  startDelete(async () => {
+                    setDeleteError("");
+                    const res = await deleteCourse(course!.slug);
+                    if (res.error) setDeleteError(res.error);
+                    else router.push("/courses");
+                  });
+                }
+              }}
+              className="rounded-xl px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              {deleting ? "Deleting…" : "Delete course"}
+            </button>
+          </div>
         ) : null}
       </div>
     </form>

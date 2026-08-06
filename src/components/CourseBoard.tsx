@@ -356,8 +356,7 @@ export function CourseBoard({ courses }: { courses: Course[] }) {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) {
-            const slug = deleteTarget.slug;
-            startTransition(() => deleteCourse(slug));
+            run(() => deleteCourse(deleteTarget.slug));
           }
           setDeleteTarget(null);
         }}

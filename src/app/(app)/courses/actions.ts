@@ -77,6 +77,9 @@ export async function saveCourse(
 
   const titleFr = str(fd, "title_fr");
   if (!titleFr) return { error: "The French title is required." };
+  if (!str(fd, "city")) return { error: "City is required." };
+  if (!str(fd, "start_date")) return { error: "Start date is required." };
+  if (!str(fd, "end_date")) return { error: "End date is required." };
 
   // Fetch the current stored files (if editing) up front, so replaced/
   // removed cover image, gallery photos and workbook can be cleaned out of
@@ -101,6 +104,13 @@ export async function saveCourse(
     if (![objectives, program, supervisors, sponsors].every(Array.isArray)) throw new Error();
   } catch {
     return { error: "Objectives, program, supervisors and sponsors must be valid JSON arrays." };
+  }
+
+  // "Sponsored" without an actual sponsor renders as a blank "Funded by" box
+  // on the public site — reject at the source instead of shipping the gap.
+  const isSponsored = fd.get("is_sponsored") != null;
+  if (isSponsored && (sponsors as unknown[]).length === 0) {
+    return { error: "Add at least one sponsor, or uncheck \"Sponsored\"." };
   }
 
   // Image: upload a new file if provided, else keep the existing URL.
@@ -216,7 +226,7 @@ export async function saveCourse(
     capacity: num(fd, "capacity"),
     qualiopi: fd.get("qualiopi") != null,
     program_type: str(fd, "program_type") || "bootcamp",
-    is_sponsored: fd.get("is_sponsored") != null,
+    is_sponsored: isSponsored,
     sponsors,
     summary: { fr: str(fd, "summary_fr"), en: str(fd, "summary_en") },
     objectives,
@@ -245,7 +255,21 @@ export async function saveCourse(
     const { error } = await sb.from("trainings").update(payload).eq("slug", editingSlug);
     if (error) return { error: error.message };
   } else {
-    const slug = `${slugify(titleFr)}-${(start || "2026-01").slice(0, 7)}`;
+    const base = `${slugify(titleFr)}-${(start || "2026-01").slice(0, 7)}`;
+    // Two courses with the same French title starting in the same month
+    // generate the same base slug — disambiguate with a numeric suffix
+    // rather than surfacing a raw unique-constraint error to the admin.
+    const { data: clashing } = await sb
+      .from("trainings")
+      .select("slug")
+      .like("slug", `${base}%`);
+    const taken = new Set((clashing ?? []).map((r) => r.slug as string));
+    let slug = base;
+    let n = 2;
+    while (taken.has(slug)) {
+      slug = `${base}-${n}`;
+      n += 1;
+    }
     // Every new course starts as a draft — invisible on the public site
     // (enforced by the trainings_public_read RLS policy, not just this
     // default) until an admin explicitly publishes it.
@@ -273,11 +297,16 @@ export async function saveCourse(
   redirect("/courses");
 }
 
-export async function deleteCourse(slug: string): Promise<void> {
+/** Returns rather than redirects — both callers (the board's row action and
+ * the edit form's delete button) need to see a failure (auth lapsed, RLS
+ * denial, network error) instead of the row/page silently failing to
+ * update with no explanation. Each caller navigates/refreshes itself once
+ * it sees no error. */
+export async function deleteCourse(slug: string): Promise<{ error?: string }> {
   const user = await getSessionUser();
-  if (!user) return;
+  if (!user) return { error: "Please sign in again." };
   const sb = supabaseServer();
-  if (!sb) return;
+  if (!sb) return { error: "Supabase is not configured." };
 
   const { data: oldFiles } = await sb
     .from("trainings")
@@ -285,7 +314,8 @@ export async function deleteCourse(slug: string): Promise<void> {
     .eq("slug", slug)
     .maybeSingle();
 
-  await sb.from("trainings").delete().eq("slug", slug);
+  const { error } = await sb.from("trainings").delete().eq("slug", slug);
+  if (error) return { error: error.message };
 
   if (oldFiles) {
     await cleanupCourseStorage(sb, {
@@ -296,7 +326,7 @@ export async function deleteCourse(slug: string): Promise<void> {
   }
 
   revalidatePath("/courses");
-  redirect("/courses");
+  return {};
 }
 
 /** Makes a draft course visible on the public site (RLS-enforced — see
@@ -307,6 +337,27 @@ export async function publishCourse(slug: string): Promise<{ error?: string }> {
   if (!user) return { error: "Please sign in again." };
   const sb = supabaseServer();
   if (!sb) return { error: "Supabase is not configured." };
+
+  const { data: course, error: fetchError } = await sb
+    .from("trainings")
+    .select("title, city, start_date, end_date, is_sponsored, sponsors")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (fetchError) return { error: fetchError.message };
+  if (!course) return { error: "Course not found." };
+
+  const missing: string[] = [];
+  if (!course.title?.fr) missing.push("title");
+  if (!course.city) missing.push("city");
+  if (!course.start_date) missing.push("start date");
+  if (!course.end_date) missing.push("end date");
+  if (course.is_sponsored && !(course.sponsors as unknown[] | null)?.length) {
+    missing.push("sponsor (marked sponsored with none added)");
+  }
+  if (missing.length) {
+    return { error: `Can't publish — missing: ${missing.join(", ")}.` };
+  }
+
   const { error } = await sb.from("trainings").update({ is_published: true }).eq("slug", slug);
   if (error) return { error: error.message };
   revalidatePath("/courses");

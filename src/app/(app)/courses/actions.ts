@@ -162,6 +162,17 @@ export async function saveCourse(
   let program_workbook_path: string | undefined;
   const workbookFile = fd.get("program_workbook");
   if (workbookFile instanceof File && workbookFile.size > 0) {
+    // .xlsx is a zip container (magic bytes "PK\x03\x04") — the browser's
+    // accept=".xlsx" is only a picker hint, not an enforcement, so a wrong
+    // file (confirmed live: a PDF got uploaded here) sails through with no
+    // error and only breaks later when /api/programs tries to parse it as a
+    // spreadsheet, silently dumping garbage into the generated PDF instead
+    // of failing cleanly.
+    const head = new Uint8Array(await workbookFile.slice(0, 4).arrayBuffer());
+    const isZip = head[0] === 0x50 && head[1] === 0x4b && (head[2] === 0x03 || head[2] === 0x05 || head[2] === 0x07);
+    if (!isZip) {
+      return { error: "That file isn't a valid .xlsx workbook (failed the file-format check)." };
+    }
     const path = `${str(fd, "__slug") || slugify(titleFr)}-${Date.now()}.xlsx`;
     const { error: wbErr } = await sb.storage
       .from("program-workbooks")

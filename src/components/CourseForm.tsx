@@ -69,6 +69,34 @@ export function CourseForm({ course }: { course?: Course }) {
     setDuration(Math.max(1, Math.round((e - s) / MS_PER_DAY) + 1));
   }, [startDate, endDate]);
 
+  // Client-side workbook validation, mirrors the server check in actions.ts:
+  // accept=".xlsx" on the input is only a picker hint (the OS "All files"
+  // option bypasses it), so this reads the real magic bytes and rejects
+  // anything that isn't a zip container before the file ever reaches submit
+  // — confirmed live: a PDF got uploaded here and broke the program endpoint.
+  const [workbookError, setWorkbookError] = useState("");
+  const [workbookFileName, setWorkbookFileName] = useState("");
+  const workbookInputRef = useRef<HTMLInputElement>(null);
+  async function handleWorkbookChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setWorkbookError("");
+    setWorkbookFileName("");
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setWorkbookError(`"${file.name}" isn't a .xlsx file.`);
+      if (workbookInputRef.current) workbookInputRef.current.value = "";
+      return;
+    }
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+    const isZip = head[0] === 0x50 && head[1] === 0x4b && (head[2] === 0x03 || head[2] === 0x05 || head[2] === 0x07);
+    if (!isZip) {
+      setWorkbookError(`"${file.name}" has a .xlsx name but isn't a real Excel file — pick the actual workbook.`);
+      if (workbookInputRef.current) workbookInputRef.current.value = "";
+      return;
+    }
+    setWorkbookFileName(file.name);
+  }
+
   return (
     <div className="space-y-5">
       {editing ? (
@@ -308,7 +336,20 @@ export function CourseForm({ course }: { course?: Course }) {
             No workbook yet — the public PDF button shows &quot;coming soon&quot; until one is uploaded.
           </p>
         )}
-        <input type="file" name="program_workbook" accept=".xlsx" className="input" />
+        <input
+          ref={workbookInputRef}
+          type="file"
+          name="program_workbook"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={handleWorkbookChange}
+          className="input"
+        />
+        {workbookFileName ? (
+          <p className="text-xs text-emerald-700">✓ {workbookFileName} — looks like a real .xlsx file.</p>
+        ) : null}
+        {workbookError ? (
+          <p className="rounded-lg bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700">{workbookError}</p>
+        ) : null}
       </section>
 
       {/* Funding & sponsorship — training-level, never per-registrant */}

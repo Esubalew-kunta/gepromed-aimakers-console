@@ -174,7 +174,21 @@ function normKey(s: string): string {
 }
 
 // --- Workbook parsing --------------------------------------------------------
+// .xlsx is a zip container (magic bytes "PK\x03\x04"). Checked here too, not
+// just at upload time, so a file that was already corrupted in storage before
+// this check existed fails loudly instead of the `xlsx` package's text-mode
+// fallback silently reading binary garbage as spreadsheet cells — confirmed
+// live: a PDF uploaded in place of a workbook produced a "program" whose
+// schedule section was literally the PDF's own raw bytes (`7 0 obj`, `stream`,
+// `endobj`, ...) printed as session titles.
+function isZipContainer(buf: Buffer): boolean {
+  return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && (buf[2] === 0x03 || buf[2] === 0x05 || buf[2] === 0x07);
+}
+
 function parseWorkbook(buf: Buffer): { metadata: Metadata; slots: Slot[] } {
+  if (!isZipContainer(buf)) {
+    throw new Error("Le fichier n'est pas un classeur .xlsx valide.");
+  }
   const wb = XLSX.read(buf, { type: "buffer" });
   const names = wb.SheetNames;
 
